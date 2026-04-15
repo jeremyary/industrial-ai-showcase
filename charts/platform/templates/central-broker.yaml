@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: central-broker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: central-broker
+    {{- include "central.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.centralBroker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: central-broker
+      {{- include "central.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: central-broker
+        {{- include "central.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: mosquitto
+          image: {{ .Values.centralBroker.image }}
+          ports:
+            - name: mqtt
+              containerPort: {{ .Values.centralBroker.mqttPort }}
+            - name: websocket
+              containerPort: {{ .Values.centralBroker.websocketPort }}
+          resources:
+            {{- toYaml .Values.centralBroker.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: mqtt
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: mqtt
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: mosquitto-config
+              mountPath: /mosquitto/config/mosquitto.conf
+              subPath: mosquitto.conf
+      volumes:
+        - name: mosquitto-config
+          configMap:
+            name: central-broker-config

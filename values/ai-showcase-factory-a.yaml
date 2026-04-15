@@ -1,0 +1,16 @@
+# Factory A — warehouse operations monitoring
+siteName: ai-showcase-factory-a
+
+cameraFeed:
+  cameras:
+    - warehouse_ops
+    - warehouse_safety
+  videoSources:
+    # NGC VSS Blueprint sample data (requires ngc-api-key secret)
+    ngc:
+      resource: nvidia/vss-developer/dev-profile-sample-data
+      version: "3.1.0"
+      # Map camera names to filenames inside the tarball
+      fileMap:
+        warehouse_ops: warehouse_sample.mp4
+        warehouse_safety: warehouse_safety_0001.mp4

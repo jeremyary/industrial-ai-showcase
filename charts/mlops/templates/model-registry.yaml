@@ -1,0 +1,120 @@
+# This project was developed with assistance from AI tools.
+{{- if .Values.modelRegistry.enabled }}
+# Postgres backing store for the RHOAI Model Registry.
+# Deployed in the registries namespace (rhoai-model-registries) — the
+# Model Registry operator manages the registry server deployment once
+# the ModelRegistry CR is created.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.modelRegistry.name }}-db
+  namespace: {{ .Values.modelRegistry.namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+stringData:
+  database-user: {{ .Values.modelRegistry.database.user }}
+  database-password: {{ .Values.modelRegistry.database.password }}
+  database-name: {{ .Values.modelRegistry.database.name }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.modelRegistry.name }}-postgres
+  namespace: {{ .Values.modelRegistry.namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: {{ .Values.storage.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.modelRegistry.database.pvcSize }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.modelRegistry.name }}-postgres
+  namespace: {{ .Values.modelRegistry.namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+    app: {{ .Values.modelRegistry.name }}-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.modelRegistry.name }}-postgres
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.modelRegistry.name }}-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: {{ .Values.modelRegistry.database.image }}
+        env:
+        - name: POSTGRESQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.modelRegistry.name }}-db
+              key: database-user
+        - name: POSTGRESQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.modelRegistry.name }}-db
+              key: database-password
+        - name: POSTGRESQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.modelRegistry.name }}-db
+              key: database-name
+        ports:
+        - containerPort: 5432
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "{{ .Values.modelRegistry.database.user }}"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/pgsql/data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ .Values.modelRegistry.name }}-postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.modelRegistry.name }}-postgres
+  namespace: {{ .Values.modelRegistry.namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+    app: {{ .Values.modelRegistry.name }}-postgres
+spec:
+  selector:
+    app: {{ .Values.modelRegistry.name }}-postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+apiVersion: modelregistry.opendatahub.io/v1beta1
+kind: ModelRegistry
+metadata:
+  name: {{ .Values.modelRegistry.name }}
+  namespace: {{ .Values.modelRegistry.namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+spec:
+  enable_database_upgrade: true
+  grpc: {}
+  rest: {}
+  postgres:
+    host: {{ .Values.modelRegistry.name }}-postgres.{{ .Values.modelRegistry.namespace }}.svc.cluster.local
+    port: 5432
+    database: {{ .Values.modelRegistry.database.name }}
+    username: {{ .Values.modelRegistry.database.user }}
+    skipDBCreation: false
+    passwordSecret:
+      name: {{ .Values.modelRegistry.name }}-db
+      key: database-password
+{{- end }}

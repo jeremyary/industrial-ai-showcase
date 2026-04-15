@@ -1,0 +1,20 @@
+# Pipeline SDK — compile and submit DSP pipelines
+# RHOAI 3.3 DSPA backend is v2.5.0; kfp 2.14.x is the documented match but
+# has a protobuf conflict with kfp-kubernetes 1.x on Python 3.13.
+# kfp 2.16.0 compiles compatible IR as long as we avoid unsupported features
+# (set_security_context, ConcatPlaceholder) — see pipeline comments.
+kfp>=2.14.1
+kfp-kubernetes>=1.4.0
+
+# MLflow client — log experiments, register models
+# RHOAI 3.3 deploys MLflow 3.6.1; client must be 3.x for workspace support
+mlflow>=3.5.0
+
+# S3 client — MLflow artifact storage via MinIO
+boto3>=1.34.0
+
+# RHOAI Model Registry client — register models in Kubeflow Model Registry
+model-registry>=0.3.0
+
+# Kubeflow Trainer SDK — launch TrainJobs from pipeline steps
+kubeflow>=0.4.0

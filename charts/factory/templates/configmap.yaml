@@ -1,0 +1,180 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edge-broker-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: edge-broker
+    {{- include "factory.labels" . | nindent 4 }}
+data:
+  mosquitto.conf: |
+    listener {{ .Values.edgeBroker.mqttPort }}
+    allow_anonymous true
+    listener {{ .Values.edgeBroker.websocketPort }}
+    protocol websockets
+
+    # Bridge to central broker — forward local safety topics with site prefix
+    connection central-bridge
+    address {{ .Values.centralBrokerHost }}:{{ .Values.centralBrokerPort }}
+    topic # out 1 {{ .Values.mqttTopicPrefix }}/ {{ include "factory.siteName" . }}/safety/
+    bridge_protocol_version mqttv311
+    try_private false
+    cleansession true
+    start_type automatic
+    restart_timeout 5
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edge-inference-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: edge-inference
+    {{- include "factory.labels" . | nindent 4 }}
+data:
+  edge_inference.py: |
+    #!/usr/bin/env python3
+    """Edge inference service for OCP factory namespace.
+
+    Polls camera-feed HTTP service for frames, sends to vLLM for analysis,
+    publishes safety detections to local edge-broker via MQTT.
+    """
+
+    import json
+    import os
+    import re
+    import time
+    import base64
+    import requests
+    import paho.mqtt.client as mqtt
+
+    VLLM_URL = os.environ.get("VLLM_URL", "http://localhost:8000/v1/chat/completions")
+    MODEL_NAME = os.environ.get("MODEL_NAME", "/models/cosmos-reason2-2b")
+    MQTT_BROKER = os.environ.get("MQTT_BROKER", "edge-broker")
+    MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+    MQTT_TOPIC_PREFIX = os.environ.get("MQTT_TOPIC_PREFIX", "warehouse/safety")
+    CAMERA_URL = os.environ.get("CAMERA_URL", "http://camera-feed:8211")
+    POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "5.0"))
+    SITE_NAME = os.environ.get("SITE_NAME", "factory-a")
+    CAMERAS = os.environ.get("CAMERAS", "camera_1,camera_2").split(",")
+
+    SAFETY_PROMPT = """You are a warehouse safety monitoring AI. Analyze this camera frame and write a brief incident report.
+
+    Assess the scene for ALL of the following:
+    1. PPE COMPLIANCE: Every person MUST wear a hard hat AND high-visibility vest. Anyone in regular clothes (plaid shirt, white shirt, no vest) is a violation. Forklift/machinery operators have the STRICTEST PPE requirements.
+    2. RESTRICTED ZONE VIOLATIONS: Look for yellow CAUTION/CUIDADO tape, orange safety cones, or barricades. Anyone crossing into or standing inside a cordoned-off area is a DANGER-level violation.
+    3. FALLEN OR DROPPED OBJECTS: Boxes, packages, or items on the floor in aisles or walkways — these are trip hazards and indicate possible falling-object incidents.
+    4. FORKLIFT AND VEHICLE SAFETY: Forklifts operating near pedestrians, operators without PPE, or vehicles in pedestrian zones.
+    5. LADDER AND ELEVATION SAFETY: Workers climbing ladders while carrying objects (hands not free for handrail), unsecured rolling ladders, or working at height without fall protection.
+    6. BLOCKED AISLES OR WALKWAYS: Obstructions in aisles, emergency exits, or pedestrian paths.
+
+    Respond in this exact JSON format:
+    {
+      "overall_status": "SAFE" or "CAUTION" or "DANGER",
+      "report": "2-3 sentence incident report describing what you observe and any concerns. Write as a safety officer would — be specific about locations, distances, and actions.",
+      "hazards": [{"type": "ppe|restricted_zone|obstruction|falling_object|vehicle|ladder", "severity": "low|medium|high", "detail": "brief description"}]
+    }
+
+    Severity guide: PPE violation = medium. Restricted zone entry = high. Forklift operator without PPE = high. Fallen object in walkway = medium. Climbing ladder with full hands = high.
+
+    If the scene is safe, still describe what you see in the report. Always respond with valid JSON only."""
+
+
+    def fetch_frame(camera_name):
+        """Fetch latest JPEG frame from camera-feed service."""
+        try:
+            resp = requests.get(f"{CAMERA_URL}/cameras/{camera_name}/latest.jpg", timeout=10)
+            resp.raise_for_status()
+            return base64.b64encode(resp.content).decode("utf-8")
+        except requests.RequestException as e:
+            print(f"  Failed to fetch frame for {camera_name}: {e}")
+            return None
+
+
+    def analyze_frame(image_b64, camera_id):
+        """Send a base64 frame to vLLM for safety analysis."""
+        try:
+            response = requests.post(
+                VLLM_URL,
+                json={
+                    "model": MODEL_NAME,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+                                },
+                                {"type": "text", "text": SAFETY_PROMPT},
+                            ],
+                        }
+                    ],
+                    "max_tokens": 768,
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            message = result["choices"][0]["message"]
+            content = message.get("reasoning") or message.get("content") or ""
+
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            if json_match:
+                return json.loads(json_match.group())
+
+            print(f"  No JSON found in response for {camera_id}")
+            return None
+
+        except (requests.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
+            print(f"  Analysis failed for {camera_id}: {e}")
+            return None
+
+
+    def main():
+        # Wait for vLLM to be ready
+        print(f"[{SITE_NAME}] Waiting for vLLM at {VLLM_URL}...")
+        while True:
+            try:
+                resp = requests.get(VLLM_URL.replace("/v1/chat/completions", "/health"), timeout=5)
+                if resp.status_code == 200:
+                    break
+            except requests.RequestException:
+                pass
+            time.sleep(10)
+
+        mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"edge-inference-{SITE_NAME}")
+        mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
+        mqtt_client.loop_start()
+
+        print(f"[{SITE_NAME}] Edge inference service started")
+        print(f"  vLLM: {VLLM_URL}")
+        print(f"  MQTT: {MQTT_BROKER}:{MQTT_PORT}")
+        print(f"  Camera URL: {CAMERA_URL}")
+        print(f"  Poll interval: {POLL_INTERVAL}s")
+
+        while True:
+            for camera_id in CAMERAS:
+                image_b64 = fetch_frame(camera_id)
+                if not image_b64:
+                    continue
+
+                print(f"\n[{SITE_NAME}] Analyzing {camera_id}...")
+                result = analyze_frame(image_b64, camera_id)
+                if result:
+                    result["camera_id"] = camera_id
+                    result["site"] = SITE_NAME
+                    result["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+                    topic = f"{MQTT_TOPIC_PREFIX}/{camera_id}"
+                    payload = json.dumps(result, indent=2)
+                    mqtt_client.publish(topic, payload, qos=1)
+                    print(f"  Status: {result.get('overall_status', 'UNKNOWN')}")
+                    print(f"  Published to: {topic}")
+
+            time.sleep(POLL_INTERVAL)
+
+
+    if __name__ == "__main__":
+        main()

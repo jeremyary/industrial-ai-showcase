@@ -1,0 +1,102 @@
+# This project was developed with assistance from AI tools.
+{{- if .Values.tao.enabled }}
+# Kubeflow Trainer v2 TrainingRuntime for TAO DetectNet_v2 training.
+# Pipeline steps create TrainJobs referencing this runtime via the
+# Kubeflow SDK (TrainerClient). TrainJobs appear in the RHOAI
+# Training Jobs dashboard.
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: ClusterTrainingRuntime
+metadata:
+  name: tao-detectnet
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+    trainer.kubeflow.org/framework: tensorflow
+spec:
+  mlPolicy:
+    numNodes: 1
+  template:
+    spec:
+      replicatedJobs:
+      - groupName: default
+        name: node
+        replicas: 1
+        template:
+          metadata:
+            labels:
+              trainer.kubeflow.org/trainjob-ancestor-step: trainer
+          spec:
+            template:
+              spec:
+                serviceAccountName: pipeline-runner-isaac-pipelines
+                imagePullSecrets:
+                - name: ngc-pull-secret
+                securityContext:
+                  runAsUser: 0
+                  fsGroup: 0
+                containers:
+                - name: node
+                  image: {{ .Values.tao.image | quote }}
+                  command: ["/bin/bash", "-c"]
+                  args:
+                  - |
+                    echo '=== TAO DetectNet_v2 Training ===' &&
+                    nvidia-smi &&
+                    rm -rf /workspace/output/resnet18_palletjack &&
+                    mkdir -p /workspace/pretrained /workspace/output/resnet18_palletjack &&
+                    wget -q --content-disposition \
+                      '{{ .Values.tao.training.pretrainedModelUrl }}' \
+                      -O /workspace/pretrained/resnet18.hdf5 &&
+                    detectnet_v2 train \
+                      -e /workspace/specs/training_resnet18.txt \
+                      -r /workspace/output/resnet18_palletjack \
+                      -k {{ .Values.tao.training.encryptionKey }} \
+                      --gpus 1 &&
+                    echo '=== Training complete ===' &&
+                    find /workspace/output/ -type f | head -20 &&
+                    ls -la /workspace/output/resnet18_palletjack/weights/
+                  env:
+                  - name: NGC_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: ngc-api-key
+                        key: NGC_API_KEY
+                  resources:
+                    limits:
+                      nvidia.com/gpu: {{ .Values.tao.resources.limits.gpu | quote }}
+                      memory: {{ .Values.tao.resources.limits.memory }}
+                      cpu: {{ .Values.tao.resources.limits.cpu | quote }}
+                    requests:
+                      nvidia.com/gpu: {{ .Values.tao.resources.requests.gpu | quote }}
+                      memory: {{ .Values.tao.resources.requests.memory }}
+                      cpu: {{ .Values.tao.resources.requests.cpu | quote }}
+                  volumeMounts:
+                  - name: synthetic-data
+                    mountPath: /workspace/data
+                  - name: model-artifacts
+                    mountPath: /workspace/output
+                  - name: specs
+                    mountPath: /workspace/specs
+                  - name: tfrecords
+                    mountPath: /workspace/tfrecords
+                  - name: pretrained
+                    mountPath: /workspace/pretrained
+                nodeSelector:
+                  {{- include "mlops.gpuNodeSelector" . | nindent 18 }}
+                tolerations:
+                  {{- include "mlops.gpuTolerations" . | nindent 16 }}
+                volumes:
+                - name: synthetic-data
+                  persistentVolumeClaim:
+                    claimName: synthetic-data
+                - name: model-artifacts
+                  persistentVolumeClaim:
+                    claimName: model-artifacts
+                - name: specs
+                  configMap:
+                    name: tao-specs
+                - name: tfrecords
+                  persistentVolumeClaim:
+                    claimName: tfrecords
+                - name: pretrained
+                  emptyDir: {}
+{{- end }}

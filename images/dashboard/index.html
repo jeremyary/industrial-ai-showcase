@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Warehouse Safety Monitor — NOC Dashboard</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+    --text: #e1e4ed; --text-dim: #8b8fa3;
+    --safe: #22c55e; --caution: #eab308; --danger: #ef4444; --accent: #3b82f6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
+  }
+  header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+  .mqtt-status { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); }
+  .mqtt-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+  .mqtt-dot.connected { background: var(--safe); }
+
+  .main-layout {
+    display: grid; grid-template-columns: 1fr 380px; gap: 16px;
+    padding: 16px; height: calc(100vh - 60px);
+  }
+
+  .sites-column { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+
+  .site-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; flex-shrink: 0;
+  }
+  .site-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .site-name { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .status-badge {
+    font-size: 11px; font-weight: 700; padding: 3px 10px;
+    border-radius: 4px; letter-spacing: 0.5px;
+  }
+  .status-SAFE { background: var(--safe); color: #052e16; }
+  .status-CAUTION { background: var(--caution); color: #422006; }
+  .status-DANGER { background: var(--danger); color: white; animation: pulse 1s infinite; }
+  .status-UNKNOWN { background: var(--border); color: var(--text-dim); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+  .camera-section {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .camera-section:last-child { border-bottom: none; }
+  .camera-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .camera-name { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .camera-report {
+    font-size: 13px; line-height: 1.5; color: var(--text-dim);
+    padding: 8px 12px; background: rgba(255,255,255,0.02);
+    border-radius: 6px; border-left: 3px solid var(--border);
+  }
+  .camera-report.status-SAFE { border-left-color: var(--safe); }
+  .camera-report.status-CAUTION { border-left-color: var(--caution); }
+  .camera-report.status-DANGER { border-left-color: var(--danger); }
+  .camera-time {
+    font-size: 11px; color: var(--text-dim); margin-top: 4px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .hazard-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .hazard-tag {
+    font-size: 10px; padding: 2px 8px; border-radius: 3px;
+    font-weight: 600; letter-spacing: 0.3px;
+  }
+  .hazard-tag.low { background: rgba(234,179,8,0.15); color: var(--caution); }
+  .hazard-tag.medium { background: rgba(234,179,8,0.25); color: var(--caution); }
+  .hazard-tag.high { background: rgba(239,68,68,0.2); color: var(--danger); }
+
+  .sidebar { display: flex; flex-direction: column; gap: 16px; }
+  .event-log {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; flex: 1; display: flex; flex-direction: column; min-height: 0;
+  }
+  .event-log h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-dim); padding: 10px 14px; border-bottom: 1px solid var(--border);
+  }
+  .event-list {
+    flex: 1; overflow-y: auto; padding: 8px;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.6;
+  }
+  .event-entry { padding: 2px 8px; }
+  .event-time { color: var(--text-dim); }
+  .event-site { color: var(--accent); font-weight: 600; }
+  .event-status-SAFE { color: var(--safe); }
+  .event-status-CAUTION { color: var(--caution); }
+  .event-status-DANGER { color: var(--danger); }
+
+  .stats-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px;
+  }
+  .stats-panel h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-dim); margin-bottom: 12px;
+  }
+  .stat-row {
+    display: flex; justify-content: space-between; padding: 6px 0;
+    font-size: 13px; border-bottom: 1px solid var(--border);
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-value { font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>WAREHOUSE SAFETY MONITOR</h1>
+  <div class="mqtt-status">
+    <div class="mqtt-dot" id="mqttDot"></div>
+    <span id="mqttLabel">Disconnected</span>
+  </div>
+</header>
+
+<div class="main-layout">
+  <div class="sites-column" id="sitesColumn"></div>
+  <div class="sidebar">
+    <div class="stats-panel">
+      <h3>Fleet Overview</h3>
+      <div id="statsContent">
+        <div class="stat-row">
+          <span>Sites reporting</span>
+          <span class="stat-value" id="statSites">0</span>
+        </div>
+        <div class="stat-row">
+          <span>Active cameras</span>
+          <span class="stat-value" id="statCameras">0</span>
+        </div>
+        <div class="stat-row">
+          <span>Open hazards</span>
+          <span class="stat-value" id="statHazards">0</span>
+        </div>
+      </div>
+    </div>
+    <div class="event-log">
+      <h3>Event Log</h3>
+      <div class="event-list" id="eventLog"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// State: discovered dynamically from MQTT messages
+const siteData = {};  // site -> { cameras: { cam -> {status, report, hazards, timestamp} } }
+let client = null;
+let totalEvents = 0;
+
+function connectMqtt() {
+  const wsUrl = `wss://${window.location.hostname}/mqtt`;
+  client = mqtt.connect(wsUrl);
+  client.on('connect', () => {
+    document.getElementById('mqttDot').classList.add('connected');
+    document.getElementById('mqttLabel').textContent = 'Connected';
+    // Subscribe to all site safety topics (wildcard)
+    client.subscribe('+/safety/#');
+    logEvent('system', 'MQTT connected');
+  });
+  client.on('close', () => {
+    document.getElementById('mqttDot').classList.remove('connected');
+    document.getElementById('mqttLabel').textContent = 'Disconnected';
+  });
+  client.on('message', (topic, message) => {
+    try {
+      const data = JSON.parse(message.toString());
+      // topic format: {site}/safety/{camera}
+      const parts = topic.split('/');
+      if (parts.length < 3 || parts[1] !== 'safety') return;
+      const site = parts[0];
+      const cam = parts[2];
+      handleSafety(site, cam, data);
+    } catch (e) { console.error('Parse error:', e); }
+  });
+}
+
+function handleSafety(site, cam, data) {
+  // Auto-discover sites and cameras
+  if (!siteData[site]) {
+    siteData[site] = { cameras: {} };
+  }
+
+  const prev = siteData[site].cameras[cam];
+  const status = data.overall_status || 'UNKNOWN';
+
+  siteData[site].cameras[cam] = {
+    status: status,
+    report: data.report || data.summary || '',
+    hazards: data.hazards || [],
+    timestamp: data.timestamp || new Date().toISOString(),
+  };
+
+  renderSites();
+  updateStats();
+
+  // Log on status change or first report
+  if (!prev || prev.status !== status) {
+    const reportPreview = (data.report || '').substring(0, 120);
+    logEvent(`${site}/${cam}`, `${status} — ${reportPreview}`, status);
+    totalEvents++;
+  }
+}
+
+function renderSites() {
+  const col = document.getElementById('sitesColumn');
+  const sites = Object.keys(siteData).sort();
+
+  sites.forEach(site => {
+    let panel = document.getElementById(`site-${site}`);
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.className = 'site-panel';
+      panel.id = `site-${site}`;
+      col.appendChild(panel);
+    }
+
+    const cams = siteData[site].cameras;
+    const camNames = Object.keys(cams).sort();
+    const statuses = camNames.map(c => cams[c].status);
+    let siteStatus = 'SAFE';
+    if (statuses.includes('DANGER')) siteStatus = 'DANGER';
+    else if (statuses.includes('CAUTION')) siteStatus = 'CAUTION';
+
+    const displayName = site.replace('nvidia-ai-', '').replace(/-/g, ' ');
+
+    panel.innerHTML = `
+      <div class="site-header">
+        <span class="site-name">${displayName}</span>
+        <span class="status-badge status-${siteStatus}">${siteStatus}</span>
+      </div>
+      ${camNames.map(cam => {
+        const c = cams[cam];
+        const camDisplay = cam.replace(/_/g, ' ');
+        const time = c.timestamp ? new Date(c.timestamp).toLocaleTimeString('en-US', {hour12: false}) : '';
+        const hazardTags = (c.hazards || []).map(h =>
+          '<span class="hazard-tag ' + (h.severity || 'low') + '">' +
+          (h.type || '').replace(/_/g, ' ') + ': ' + (h.detail || '') + '</span>'
+        ).join('');
+        return '<div class="camera-section">' +
+          '<div class="camera-header">' +
+            '<span class="camera-name">' + camDisplay + '</span>' +
+            '<span class="status-badge status-' + c.status + '">' + c.status + '</span>' +
+          '</div>' +
+          '<div class="camera-report status-' + c.status + '">' +
+            (c.report || 'Awaiting analysis...') +
+          '</div>' +
+          (hazardTags ? '<div class="hazard-tags">' + hazardTags + '</div>' : '') +
+          '<div class="camera-time">Last update: ' + time + '</div>' +
+        '</div>';
+      }).join('')}
+    `;
+  });
+}
+
+function updateStats() {
+  const sites = Object.keys(siteData);
+  let totalCams = 0;
+  let totalHazards = 0;
+  sites.forEach(s => {
+    const cams = Object.values(siteData[s].cameras);
+    totalCams += cams.length;
+    cams.forEach(c => { totalHazards += (c.hazards || []).length; });
+  });
+  document.getElementById('statSites').textContent = sites.length;
+  document.getElementById('statCameras').textContent = totalCams;
+  document.getElementById('statHazards').textContent = totalHazards;
+}
+
+function logEvent(source, message, status) {
+  const log = document.getElementById('eventLog');
+  const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const cls = status ? 'event-status-' + status : '';
+  const entry = document.createElement('div');
+  entry.className = 'event-entry';
+  entry.innerHTML = '<span class="event-time">' + time + '</span> ' +
+    '<span class="event-site">[' + source + ']</span> ' +
+    '<span class="' + cls + '">' + message + '</span>';
+  log.insertBefore(entry, log.firstChild);
+  while (log.children.length > 200) log.removeChild(log.lastChild);
+}
+
+connectMqtt();
+</script>
+</body>
+</html>

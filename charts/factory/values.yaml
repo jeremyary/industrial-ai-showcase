@@ -1,0 +1,90 @@
+# Always override via site-specific values file (e.g., values/ai-showcase-factory-a.yaml)
+siteName: factory-x
+
+centralBrokerHost: central-broker.ai-showcase-central.svc.cluster.local
+centralBrokerPort: 1883
+mqttTopicPrefix: warehouse/safety
+
+cameraFeed:
+  image: quay.io/jary/camera-feed:latest
+  replicas: 1
+  frameRate: 2
+  httpPort: 8211
+  # Camera names must match video filenames (without .mp4) in the videos directory.
+  # Each factory overrides this in values/ai-showcase-factory-{a,b}.yaml
+  cameras:
+    - camera_1
+    - camera_2
+  # Video sources for the init container. Supports two modes:
+  #   ngc: Download from NGC registry (requires ngc-api-key secret)
+  #     ngc.resource: org/team/resource-name
+  #     ngc.version: version string
+  #     ngc.fileMap: camera_name -> filename in tarball
+  #   urls: Map of camera_name -> direct download URL (fallback)
+  videoSources: {}
+  videoStorage:
+    storageClass: gp3-csi
+    size: 5Gi
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "2"
+
+edgeInference:
+  image: vllm/vllm-openai:latest
+  sidecarImage: quay.io/jary/inference-sidecar:latest
+  model: nvidia/Cosmos-Reason2-2B
+  maxModelLen: 8192
+  gpuCount: 1
+  replicas: 1
+  port: 8000
+  resources:
+    requests:
+      memory: "16Gi"
+      cpu: "4"
+    limits:
+      memory: "24Gi"
+      cpu: "8"
+  modelStorage:
+    storageClass: gp3-csi
+    size: 50Gi
+  gpu:
+    toleration:
+      key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L4
+
+factoryDashboard:
+  image: quay.io/jary/dashboard:latest
+  replicas: 1
+  httpPort: 8080
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+  route:
+    enabled: true
+
+edgeBroker:
+  image: docker.io/library/eclipse-mosquitto:2
+  replicas: 1
+  mqttPort: 1883
+  websocketPort: 9001
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+
+imagePullSecrets:
+  - name: ngc-pull-secret

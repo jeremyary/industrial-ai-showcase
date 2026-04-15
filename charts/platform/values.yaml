@@ -1,0 +1,57 @@
+isaacSim:
+  enabled: false
+  image: nvcr.io/nvidia/isaac-sim:5.1.0
+  gpuCount: 1
+  resources:
+    requests:
+      memory: "32Gi"
+      cpu: "8"
+    limits:
+      memory: "48Gi"
+      cpu: "16"
+  cache:
+    storageClass: gp3-csi
+    size: 100Gi
+  simready:
+    storageClass: gp3-csi
+    size: 50Gi
+  webrtcPort: 49100
+  serviceAccount: isaac-sim-sa
+  gpu:
+    toleration:
+      key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L40S
+
+centralBroker:
+  image: docker.io/library/eclipse-mosquitto:2
+  replicas: 1
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+  mqttPort: 1883
+  websocketPort: 9001
+
+dashboard:
+  image: quay.io/jary/dashboard:latest
+  replicas: 1
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+  httpPort: 8080
+  route:
+    enabled: true
+    host: ""
+
+imagePullSecrets:
+  - name: ngc-pull-secret

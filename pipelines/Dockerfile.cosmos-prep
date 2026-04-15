@@ -1,0 +1,22 @@
+# This project was developed with assistance from AI tools.
+FROM registry.access.redhat.com/ubi9/python-311:latest
+
+USER 0
+
+# Install static ffmpeg binary (no system library dependencies)
+RUN curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+        -o /tmp/ffmpeg.tar.xz && \
+    tar -xf /tmp/ffmpeg.tar.xz -C /tmp && \
+    cp /tmp/ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ffmpeg && \
+    chmod +x /usr/local/bin/ffmpeg && \
+    rm -rf /tmp/ffmpeg*
+
+RUN pip install --no-cache-dir opencv-python-headless numpy requests
+
+COPY prepare_control_maps.py run_cosmos_augmentation.py /app/
+
+WORKDIR /app
+
+# Run as root — PVC directories are owned by root (created by Isaac Sim).
+# The pipeline SA has anyuid SCC granted.
+USER 0

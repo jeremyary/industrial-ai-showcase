@@ -1,0 +1,206 @@
+# This project was developed with assistance from AI tools.
+{{- if .Values.dspa.enabled }}
+# Grant anyuid SCC to the DSPA pipeline runner SA.
+# NVIDIA containers (Isaac Sim, TAO Toolkit) require root access.
+# The SA name follows the DSPA naming convention: pipeline-runner-<dspa-name>
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Namespace }}-pipeline-anyuid
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner-isaac-pipelines
+  namespace: {{ .Release.Namespace }}
+{{- if .Values.mlflow.enabled }}
+---
+# MLflow edit permissions — allows pipeline steps to create experiments,
+# log runs, and register models via RHOAI MLflow K8s workspace auth.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Namespace }}-pipeline-mlflow-edit
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mlflow-operator-mlflow-edit
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner-isaac-pipelines
+  namespace: {{ .Release.Namespace }}
+---
+# MLflow view permissions — allows pipeline steps to read experiments
+# and model registry via RHOAI MLflow K8s workspace auth.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Namespace }}-pipeline-mlflow-view
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mlflow-operator-mlflow-view
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner-isaac-pipelines
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if .Values.tao.enabled }}
+---
+# Kubeflow Trainer v2 — allows pipeline steps to create, monitor, and
+# clean up TrainJob resources for GPU training (shows in RHOAI dashboard).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-runner-trainjob-edit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kueue-trainjob-editor-role
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner-isaac-pipelines
+  namespace: {{ .Release.Namespace }}
+---
+# ClusterTrainingRuntime read access — allows the Kubeflow TrainerClient SDK
+# to look up the ClusterTrainingRuntime referenced by each TrainJob.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-training-runtime-reader
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+rules:
+- apiGroups: ["trainer.kubeflow.org"]
+  resources: ["clustertrainingruntimes"]
+  verbs: ["get", "list", "watch"]
+---
+# Namespace-scoped TrainingRuntime read access — the Kubeflow Trainer SDK
+# checks namespace-scoped TrainingRuntimes first and only falls through to
+# ClusterTrainingRuntime on a 404. Without this, the SA gets a 403 which
+# the SDK treats as a hard failure.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: training-runtime-reader
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+rules:
+- apiGroups: ["trainer.kubeflow.org"]
+  resources: ["trainingruntimes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Namespace }}-training-runtime-reader
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: training-runtime-reader
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner-isaac-pipelines
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Namespace }}-runtime-reader
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-training-runtime-reader
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner-isaac-pipelines
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if .Values.serving.enabled }}
+---
+# KServe InferenceService management — allows pipeline steps to create,
+# update, and monitor InferenceService resources for model deployment.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: inferenceservice-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+rules:
+- apiGroups: ["serving.kserve.io"]
+  resources: ["inferenceservices"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["serving.kserve.io"]
+  resources: ["inferenceservices/status"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-runner-inferenceservice-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: inferenceservice-manager
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner-isaac-pipelines
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if .Values.cosmosTransfer.enabled }}
+---
+# Cosmos NIM pod/service lifecycle — allows pipeline steps to create and
+# delete temporary NIM pods and services for Cosmos Transfer augmentation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cosmos-nim-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/status"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-runner-cosmos-nim-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cosmos-nim-manager
+subjects:
+- kind: ServiceAccount
+  name: pipeline-runner-isaac-pipelines
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

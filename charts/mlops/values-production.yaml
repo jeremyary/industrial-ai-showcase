@@ -1,0 +1,60 @@
+# Production-scale overrides for the MLOps chart.
+#
+# Usage:
+#   helm install mlops charts/mlops/ \
+#     -f charts/mlops/values-production.yaml \
+#     --set ngc.apiKey=<key> \
+#     -n ai-showcase-mlops --create-namespace
+
+# Storage — larger PVCs for full-scale datasets
+storage:
+  syntheticData:
+    size: 200Gi
+  modelArtifacts:
+    size: 50Gi
+  workspace:
+    size: 5Gi
+  tfrecords:
+    size: 20Gi
+
+minio:
+  storage:
+    size: 100Gi
+
+# Isaac Sim — full-scale data generation
+isaacSim:
+  resources:
+    limits:
+      gpu: 1
+      memory: 64Gi
+      cpu: "16"
+    requests:
+      gpu: 1
+      memory: 32Gi
+      cpu: "8"
+  datagen:
+    numFrames: 5000
+    height: 544
+    width: 960
+    distractors: warehouse
+
+# TAO Toolkit — production training
+tao:
+  resources:
+    limits:
+      gpu: 1
+      memory: 64Gi
+      cpu: "16"
+    requests:
+      gpu: 1
+      memory: 32Gi
+      cpu: "8"
+  training:
+    epochs: 80
+    batchSize: 32
+
+# Model serving — larger memory for production inference
+serving:
+  inference:
+    memory: 16Gi
+    memoryRequest: 8Gi

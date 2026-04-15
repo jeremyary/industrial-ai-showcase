@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-weights
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "factory.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.edgeInference.modelStorage.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.edgeInference.modelStorage.size }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: camera-videos
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: camera-feed
+    {{- include "factory.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.cameraFeed.videoStorage.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.cameraFeed.videoStorage.size }}

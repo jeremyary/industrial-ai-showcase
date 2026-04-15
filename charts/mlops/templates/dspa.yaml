@@ -1,0 +1,29 @@
+# This project was developed with assistance from AI tools.
+{{- if .Values.dspa.enabled }}
+apiVersion: datasciencepipelinesapplications.opendatahub.io/v1
+kind: DataSciencePipelinesApplication
+metadata:
+  name: isaac-pipelines
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mlops.labels" . | nindent 4 }}
+spec:
+  dspVersion: {{ .Values.dspa.dspVersion }}
+  objectStorage:
+    minio:
+      deploy: false
+      image: {{ .Values.minio.image }}
+    externalStorage:
+      host: minio.{{ .Release.Namespace }}.svc:9000
+      scheme: http
+      bucket: mlpipeline
+      s3CredentialsSecret:
+        accessKey: accesskey
+        secretKey: secretkey
+        secretName: minio-credentials
+  database:
+    mariaDB:
+      deploy: true
+      pvcSize: {{ .Values.dspa.database.pvcSize }}
+      storageClassName: {{ .Values.storage.storageClassName }}
+{{- end }}

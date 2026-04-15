@@ -1,0 +1,29 @@
+{{- if .Values.isaacSim.enabled }}
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ include "central.fullname" . }}-isaac-sim-scc
+  labels:
+    {{- include "central.labels" . | nindent 4 }}
+allowPrivilegedContainer: true
+allowHostNetwork: true
+allowHostPorts: true
+allowHostDirVolumePlugin: true
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+volumes:
+  - configMap
+  - emptyDir
+  - persistentVolumeClaim
+  - projected
+  - secret
+  - hostPath
+users:
+  - system:serviceaccount:{{ .Release.Namespace }}:{{ .Values.isaacSim.serviceAccount }}
+{{- end }}

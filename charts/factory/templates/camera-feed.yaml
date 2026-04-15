@@ -1,0 +1,155 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: camera-feed
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: camera-feed
+    {{- include "factory.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.cameraFeed.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: camera-feed
+      {{- include "factory.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: camera-feed
+        {{- include "factory.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "factory.siteName" . }}-sa
+      initContainers:
+        - name: fetch-videos
+          image: registry.access.redhat.com/ubi9/ubi:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "[init] Fetching camera videos..."
+
+              # Check if all expected videos already exist
+              ALL_EXIST=true
+              {{- if and .Values.cameraFeed.videoSources.ngc .Values.cameraFeed.videoSources.ngc.fileMap }}
+              {{- range $cam, $_ := .Values.cameraFeed.videoSources.ngc.fileMap }}
+              [ -f "/data/videos/{{ $cam }}.mp4" ] || ALL_EXIST=false
+              {{- end }}
+              {{- end }}
+              {{- if .Values.cameraFeed.videoSources.urls }}
+              {{- range $cam, $_ := .Values.cameraFeed.videoSources.urls }}
+              [ -f "/data/videos/{{ $cam }}.mp4" ] || ALL_EXIST=false
+              {{- end }}
+              {{- end }}
+
+              if [ "$ALL_EXIST" = "true" ]; then
+                echo "[init] All videos already present, skipping download"
+                ls -lh /data/videos/
+                exit 0
+              fi
+
+              # Clean stale videos from previous config
+              find /data/videos -name '*.mp4' -delete 2>/dev/null || true
+
+              {{- if and .Values.cameraFeed.videoSources.ngc .Values.cameraFeed.videoSources.ngc.fileMap }}
+              # Download from NGC registry
+              NGC_RESOURCE="{{ .Values.cameraFeed.videoSources.ngc.resource }}"
+              NGC_VERSION="{{ .Values.cameraFeed.videoSources.ngc.version }}"
+              ORG=$(echo "$NGC_RESOURCE" | cut -d/ -f1)
+              TEAM=$(echo "$NGC_RESOURCE" | cut -d/ -f2)
+              NAME=$(echo "$NGC_RESOURCE" | cut -d/ -f3)
+
+              # Find the tarball filename
+              echo "[init] Querying NGC resource: $NGC_RESOURCE v$NGC_VERSION"
+              FILES_URL="https://api.ngc.nvidia.com/v2/org/${ORG}/team/${TEAM}/resources/${NAME}/versions/${NGC_VERSION}/files"
+              TARBALL=$(curl -sS -H "Authorization: Bearer $NGC_API_KEY" "$FILES_URL" | \
+                grep -o '"path":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+              if [ -z "$TARBALL" ]; then
+                echo "[error] Could not determine tarball filename from NGC"
+                exit 1
+              fi
+              echo "[init] Downloading $TARBALL (~400MB)..."
+
+              DL_URL="https://api.ngc.nvidia.com/v2/org/${ORG}/team/${TEAM}/resources/${NAME}/versions/${NGC_VERSION}/files/${TARBALL}"
+              curl -fSL -H "Authorization: Bearer $NGC_API_KEY" "$DL_URL" -o /tmp/resource.tar.gz
+
+              echo "[init] Extracting requested videos..."
+              STRIP_DIR=$(tar tzf /tmp/resource.tar.gz | head -1 | cut -d/ -f1)
+              {{- range $cam, $file := .Values.cameraFeed.videoSources.ngc.fileMap }}
+              tar xzf /tmp/resource.tar.gz -C /tmp "${STRIP_DIR}/{{ $file }}" 2>/dev/null && \
+                mv "/tmp/${STRIP_DIR}/{{ $file }}" "/data/videos/{{ $cam }}.mp4" && \
+                echo "  [done] {{ $cam }}.mp4 (from {{ $file }})" || \
+                echo "  [warn] {{ $file }} not found in archive"
+              {{- end }}
+
+              rm -f /tmp/resource.tar.gz
+              {{- end }}
+
+              {{- if .Values.cameraFeed.videoSources.urls }}
+              # Download from direct URLs
+              {{- range $cam, $url := .Values.cameraFeed.videoSources.urls }}
+              if [ ! -f "/data/videos/{{ $cam }}.mp4" ]; then
+                echo "  [download] {{ $cam }}.mp4"
+                curl -fsSL -o "/data/videos/{{ $cam }}.mp4" "{{ $url }}" && \
+                  echo "  [done] {{ $cam }}.mp4" || \
+                  echo "  [warn] Failed to download {{ $cam }}.mp4"
+              fi
+              {{- end }}
+              {{- end }}
+
+              echo "[init] Video fetch complete"
+              ls -lh /data/videos/
+          {{- if and .Values.cameraFeed.videoSources.ngc .Values.cameraFeed.videoSources.ngc.fileMap }}
+          env:
+            - name: NGC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ngc-api-key
+                  key: NGC_API_KEY
+          {{- end }}
+          volumeMounts:
+            - name: video-data
+              mountPath: /data/videos
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      containers:
+        - name: camera-feed
+          image: {{ .Values.cameraFeed.image }}
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: {{ .Values.cameraFeed.httpPort }}
+          env:
+            - name: FRAME_RATE
+              value: {{ .Values.cameraFeed.frameRate | quote }}
+            - name: VIDEO_DIR
+              value: /data/videos
+            - name: FRAME_DIR
+              value: /data/frames
+          volumeMounts:
+            - name: video-data
+              mountPath: /data/videos
+              readOnly: true
+          resources:
+            {{- toYaml .Values.cameraFeed.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 5
+      volumes:
+        - name: video-data
+          persistentVolumeClaim:
+            claimName: camera-videos

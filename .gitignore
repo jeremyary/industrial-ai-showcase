@@ -1,0 +1,36 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+LAST_CHANGES.md
+PLAN.md
+.changes/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Training artifacts
+logs/
+checkpoints/
+videos/
+*.onnx
+*.pt
+*.zip
+
+
+# IDE
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+.coverage
