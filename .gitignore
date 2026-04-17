@@ -6,6 +6,7 @@
 LAST_CHANGES.md
 PLAN.md
 .changes/
+.plans/
 
 # Claude Code local settings
 .claude/settings.local.json
