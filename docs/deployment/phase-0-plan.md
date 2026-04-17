@@ -104,15 +104,17 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 
 ### Session 05 — Orchestration operators
 
-- **Scope**: Install the operators that orchestrate things rather than just sit there: ACM hub, AMQ Streams operator (Kafka clusters come Phase 1), Ansible Automation Platform.
-- **Deliverables**:
-  - Subscription manifests under `infrastructure/operators/{acm,amq-streams,aap}/`.
-  - ACM `MultiClusterHub` CR on hub (managed-cluster registrations land in Session 13).
-  - Argo CD Applications.
-- **Depends on**: Session 03 (needs CNPG for AAP's Postgres, unless AAP ships its own).
+- **Scope**: Install ACM, AMQ Streams, AAP; bring up the ACM hub.
+- **Landed** (under `infrastructure/gitops/apps/operators/`, picked up by the `operators` ApplicationSet):
+  - `acm/` — ACM v2.16.0 (`release-2.16`) in `open-cluster-management` + `MultiClusterHub` CR with `disableHubSelfManagement: true` (sync-wave 1 + SkipDryRunOnMissingResource so Argo CD waits for the CRD).
+  - `amq-streams/` — v3.1.0-14 (`stable`) in `amq-streams` namespace, AllNamespaces mode.
+  - `aap/` — v2.6.0 (`stable-2.6-cluster-scoped`) in `aap` namespace, AllNamespaces-capable channel.
+- **Auto-installed**: MCE (MultiCluster Engine) comes up as an ACM dependency.
+- **Deferred**: Kafka CRs (Phase 1), AutomationController (Phase 2), MultiClusterObservability (Session 14), AMQ Streams Console operator (Phase 1+).
+- **Depends on**: Session 02 (GitOps), Session 04b (cluster-admin RBAC for Argo CD — required for ACM CRDs).
 - **OSD vs companion**: hub.
 - **GPU workload?**: No.
-- **Estimated sessions**: 1.
+- **Estimated sessions**: 1 (completed as one PR).
 
 ### Session 06 — RHOAI DSC validation + GPU smoke tests
 
@@ -248,7 +250,7 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 | 02 | GitOps bootstrap | 01 | hub | — | 1 (done) |
 | 03 | Platform operators (CNPG, MinIO, Logging, Loki, CoO) | 02 | hub | — | 1 (done) |
 | 04 | Service Mesh 3 control plane | 02 | hub | — | 1 (done) |
-| 05 | Orchestration operators (ACM, AMQ Streams, AAP) | 03 | hub | — | 1 |
+| 05 | Orchestration operators (ACM, AMQ Streams, AAP) | 03 | hub | — | 1 (done) |
 | 06 | RHOAI DSC validation + GPU smoke tests + MLflow backend | 03 | hub | L40S (L4 pending) | 1 + 0.25 follow-up |
 | 07 | Observability baseline | 03, 06 | hub | — | 1 |
 | 08 | Hub security baseline (Sigstore warn, Vault, NetworkPolicy template) | 03 | hub | — | 1 |
