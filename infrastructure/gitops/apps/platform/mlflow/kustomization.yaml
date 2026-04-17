@@ -2,9 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
-  - minio-root-secret.yaml
   - mlflow-s3-credentials.yaml
   - cnpg-cluster.yaml
-  - minio-objectstore.yaml
+  - minio-pvc.yaml
+  - minio-deployment.yaml
+  - minio-service.yaml
   - minio-bucket-init-job.yaml
   - mlflow.yaml
