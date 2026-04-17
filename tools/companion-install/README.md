@@ -9,6 +9,7 @@ One-time install of the self-managed OpenShift companion cluster per ADR-017. So
 - **Version**: OCP 4.21.5 — matches the hub per Session 09 plan D3.
 - **Cluster name / baseDomain**: `companion` / `lab.local` → `api.companion.lab.local`, `*.apps.companion.lab.local`.
 - **Node IP**: static `10.0.0.80` (nmstate in agent-config).
+- **FIPS mode**: `fips: true`, day-1-only. Per ADR-017 the companion is where the FIPS demo lives. The Fedora install host is not itself in FIPS mode, so ISO rendering sets `OPENSHIFT_INSTALL_SKIP_HOSTCRYPT_VALIDATION=1` to skip the installer's host-crypt gate (the static `openshift-install` binary enforces it; the FIPS-capable variant from the `openshift-install-rhel9` tarball would not). The cluster itself comes up genuinely FIPS-enabled (`fips=1` on the RHCOS kernel cmdline, FIPS-validated crypto in the payload); only ignition-bootstrap key generation was off a non-FIPS host, which leaves `install.openshift.io/hostcrypt-check-bypassed=true` on the cluster. Immaterial for demonstrating posture; material for a formal CNSA audit.
 
 ## Prerequisites
 
@@ -43,8 +44,9 @@ KEY=$(cat ~/.ssh/id_ed25519.pub | sed 's|[/&]|\\&|g')
 sed -e "s/__PULL_SECRET__/$PS/" -e "s|__SSH_KEY__|$KEY|" install-config.template.yaml > config/install-config.yaml
 cp agent-config.yaml config/
 
-# Generate the ISO (consumes both YAMLs)
-./openshift-install agent create image --dir config
+# Generate the ISO (consumes both YAMLs). The env var bypasses the static
+# installer's host-FIPS check — see "FIPS mode" note at top of file.
+OPENSHIFT_INSTALL_SKIP_HOSTCRYPT_VALIDATION=1 ./openshift-install agent create image --dir config
 
 # Stage ISO in libvirt's pool for SELinux labelling
 sudo install -m 0644 -o qemu -g qemu config/agent.x86_64.iso /var/lib/libvirt/images/companion-agent.iso
