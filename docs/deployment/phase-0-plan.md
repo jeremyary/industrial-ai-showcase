@@ -144,13 +144,16 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 
 ### Session 08 — Hub security baseline
 
-- **Scope**: Install `policy.sigstore.dev` admission controller in **warn mode** on the hub. Seed Cosign key material (public keys in Git under `infrastructure/security/sigstore/keys/`; private keys in Vault — Vault install itself is a prerequisite, see below). Author the default deny-all NetworkPolicy template in the chart library so every future workload namespace inherits it. Draft the custom SCC catalog (no SCCs applied yet; workloads bring their own SCC requirements Phase 1+).
-- **Deliverables**:
-  - Sigstore policy-controller Subscription + `ClusterImagePolicy` in warn mode.
-  - Cosign public keys in `infrastructure/security/sigstore/keys/`.
-  - Default deny-all NetworkPolicy template in the chart library.
-  - Decision note on Vault: either install in-cluster HashiCorp Vault this session, or accept a deferred secrets story through Session 10 and use `ExternalSecrets` with a stub backend until then. Recommend in-cluster Vault now because Sigstore signing key storage benefits from it immediately.
-- **Depends on**: Session 03 (cert-manager — already installed pre-Phase-0 per Session 01 baseline, so this is really just a confirmation).
+- **Landed** (new `security` ApplicationSet layer):
+  - `apps/operators/vault-secrets/` — HashiCorp Vault Secrets Operator (certified, `stable` channel).
+  - `apps/operators/policy-controller/` — Red Hat `policy-controller-operator` v1.0.0 (stable-v1.0).
+  - `apps/platform/vault/` — single-replica, file-backed Vault StatefulSet + Service + K8s auth SA + runbook README.
+  - `apps/security/policy-controller/` — `ClusterImagePolicy/warn-project-images` scoped to future `quay.io/redhat-physical-ai-reference/**` images; `mode: warn`.
+  - `infrastructure/security/network-policies/` — `default-deny-all` + companion allowlists (argocd-sync, platform-monitoring, dns-egress) that workloads import via Kustomize.
+  - `infrastructure/security/scc/README.md` — scaffold pattern; no custom SCCs yet.
+  - ADR-023 accepting the Vault + VSO path.
+- **Scope-split decision**: the Phase-0-shortcut cleanup (placeholder Secrets → VaultStaticSecrets, MLflow CA trust fix) moves to Session 08b because Vault requires a manual init/unseal step that isn't automatable by an ApplicationSet sync. Session 08 lands the infrastructure; 08b runs after the user initializes Vault.
+- **Depends on**: Session 02 (GitOps), Session 04b (Argo CD cluster-admin RBAC).
 - **OSD vs companion**: hub. Companion security (STIG, FIPS, Sigstore **enforce** mode) is Session 11.
 - **GPU workload?**: No.
 - **Estimated sessions**: 1 (slightly tight; split if Vault in-cluster is chosen).
@@ -250,7 +253,8 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 | 05 | Orchestration operators (ACM, AMQ Streams, AAP) | 03 | hub | — | 1 (done) |
 | 06 | RHOAI DSC validation + GPU smoke tests + MLflow backend | 03 | hub | L40S + L4 | 1 (done) |
 | 07 | Observability baseline (Loki + UIPlugins + GPU rules; Tempo/OTel deferred) | 03 | hub | — | 1 (done) |
-| 08 | Hub security baseline (Sigstore warn, Vault, NetworkPolicy template) | 03 | hub | — | 1 |
+| 08 | Hub security baseline: Vault + VSO + policy-controller + templates | 03 | hub | — | 1 (done) |
+| 08b | Vault init/unseal + migrate Phase-0 placeholder Secrets to VSO + MLflow CA trust fix | 08 | hub | — | 1 |
 | 09 | Companion provisioning (OD-8 + install) | (parallel with 02) | companion | — | 2 |
 | 10 | Companion baseline capture | 09 | companion | — | 1 |
 | 11 | Companion security (STIG, FIPS, Sigstore enforce) | 10 | companion | — | 1–2 |

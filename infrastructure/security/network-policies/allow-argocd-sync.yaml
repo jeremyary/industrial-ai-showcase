@@ -1,0 +1,16 @@
+# Companion to default-deny-all. Every workload namespace needs Argo CD
+# (running in openshift-gitops) to reach it for reconciliation. Import
+# alongside default-deny.yaml in each workload's kustomization.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-argocd
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-gitops

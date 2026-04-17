@@ -1,0 +1,6 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-policy-controller-operator
+  namespace: openshift-policy-controller-operator
+spec: {}  # AllNamespaces — admission policies cluster-wide
