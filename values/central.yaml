@@ -1,6 +1,0 @@
-# Central operations overrides
-namespace: ai-showcase-central
-
-dashboard:
-  route:
-    host: ""
