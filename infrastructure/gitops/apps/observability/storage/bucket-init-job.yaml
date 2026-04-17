@@ -4,7 +4,11 @@ metadata:
   name: obs-bucket-init
   namespace: obs-storage
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    # Run as an Argo CD PostSync hook so the Job is tracked only during
+    # sync, then deleted on success. Avoids ongoing OutOfSync drift once
+    # the Job's ttlSecondsAfterFinished expires.
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   backoffLimit: 10
   ttlSecondsAfterFinished: 600
