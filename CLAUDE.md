@@ -27,6 +27,13 @@ Build the reference implementation of NVIDIA's Mega Omniverse Blueprint on Red H
 - **NVIDIA GPU Operator is already installed** on the OSD hub, with GFD labels in place. Don't re-install; validate the existing ClusterPolicy and build on it.
 - **Red Hat OpenShift AI 3.4.0 EA1 is already installed** on the OSD hub with all components enabled including `trainer` (Kubeflow Training Operator). Don't re-install RHOAI; Phase 1 validates and configures what's present.
 
+## Cluster access
+
+- **Hub kubeconfig** is whatever `oc` uses by default (user is logged in via `oc login`).
+- **Companion kubeconfig** lives on the user's workstation at `~/.kube/companion.kubeconfig`. Access with `KUBECONFIG=~/.kube/companion.kubeconfig oc ...` or `oc --kubeconfig=~/.kube/companion.kubeconfig ...`.
+- The companion API cert is valid for `api.companion.lab.local`; workstation `/etc/hosts` resolves that name to `10.0.0.80`. Use `--insecure-skip-tls-verify=true` if the cert still doesn't validate (the kubeconfig server URL mapping isn't identical to the cert SAN in every case).
+- The Fedora companion host itself is `ssh companion` (alias in user's `~/.ssh/config` → `daddo@10.0.0.73`).
+
 ## Preferred technologies (already chosen — don't re-litigate)
 
 - **Observability for LLM/agentic workloads**: MLflow (shipped as `rhoai/odh-mlflow-rhel9:v3.4.0-ea.1` with RHOAI 3.4 EA1 — ADR-015). Do not introduce Langfuse alongside.

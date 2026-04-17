@@ -1,0 +1,30 @@
+# Template rendered by the install steps in ../README.md. Two placeholders
+# are substituted at render time:
+#   __PULL_SECRET__  — contents of pull-secret.txt (never committed).
+#   __SSH_KEY__      — the operator's SSH public key (never committed).
+# Both come from local files on the operator's workstation.
+apiVersion: v1
+baseDomain: lab.local
+metadata:
+  name: companion
+controlPlane:
+  name: master
+  replicas: 1
+compute:
+  - name: worker
+    replicas: 0
+networking:
+  networkType: OVNKubernetes
+  machineNetwork:
+    - cidr: 10.0.0.0/24
+  clusterNetwork:
+    - cidr: 10.128.0.0/14
+      hostPrefix: 23
+  serviceNetwork:
+    - 172.30.0.0/16
+platform:
+  none: {}
+bootstrapInPlace:
+  installationDisk: /dev/vda
+pullSecret: '__PULL_SECRET__'
+sshKey: '__SSH_KEY__'
