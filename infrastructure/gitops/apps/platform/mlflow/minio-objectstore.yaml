@@ -1,0 +1,20 @@
+apiVersion: aistor.min.io/v1
+kind: ObjectStore
+metadata:
+  name: mlflow
+  namespace: mlflow
+spec:
+  configuration:
+    name: minio-root
+  pools:
+    - name: pool-0
+      servers: 1
+      volumesPerServer: 1
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 50Gi
+          storageClassName: gp3
