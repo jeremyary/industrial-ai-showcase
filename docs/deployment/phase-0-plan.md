@@ -73,15 +73,21 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 
 ### Session 03 — Platform operators wave 1
 
-- **Scope**: Install the "platform plumbing" operators — the boring-but-necessary layer that every application needs: storage, database, logging, tracing, dashboards.
-- **Operators**: ODF (or document using SRE-provided StorageClasses + provision separate S3 via ObjectBucketClaim if possible), CloudNativePG, OpenShift Logging + LokiStack, OpenTelemetry Operator + Tempo Operator, Grafana Operator.
+- **Scope**: Install the "platform plumbing" operators that every application needs. Reshape per Session 03 cluster recon (2026-04-17): ODF dropped in favor of MinIO (ADR-021); OpenTelemetry+Tempo+Grafana individual operators replaced by Cluster Observability Operator (Red Hat-supported, subsumes the individual pieces); Grafana decision deferred to Session 07.
+- **Operators landed**:
+  - `cloud-native-postgresql` (certified, channel `stable-v1.29`) — Postgres for MLflow, Fleet Manager state, LangGraph state.
+  - `minio-object-store-operator` (certified, channel `stable`) — in-cluster S3 per ADR-021.
+  - `cluster-logging` (redhat, channel `stable-6.5`) — log routing via `ClusterLogForwarder`.
+  - `loki-operator` (redhat, channel `stable-6.5`) — log storage via `LokiStack`.
+  - `cluster-observability-operator` (redhat, channel `stable`) — Prometheus / OTel / Tempo in one operator.
 - **Deliverables**:
-  - Subscription + per-operator CR manifests under `infrastructure/operators/{odf,cnpg,logging,otel-tempo,grafana}/`.
-  - Argo CD Applications wiring them up under `infrastructure/gitops/apps/operators/` (convention to establish this session).
+  - One Application per operator under `infrastructure/gitops/apps/operators/<name>/` (namespace + OperatorGroup + Subscription). Picked up automatically by the `operators` ApplicationSet.
+  - ADR-021 (MinIO on hub; no ODF).
 - **Depends on**: Session 02.
 - **OSD vs companion**: hub.
 - **GPU workload?**: No.
-- **Estimated sessions**: 1–2. If ODF is not available and we fall back to OSD StorageClass + standalone S3 path, that adds complexity; split if needed.
+- **Estimated sessions**: 1 (completed as one PR).
+- **Note**: user-workload monitoring was found **already enabled** by SRE on this OSD hub (`enableUserWorkload: true`, Prometheus + Thanos pods running, remote-writing to Red Hat Observatorium). Session 07 scope shrinks correspondingly — no enablement step needed there.
 
 ### Session 04 — Service Mesh 3 control plane
 
@@ -123,13 +129,15 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 
 ### Session 07 — Observability baseline
 
-- **Scope**: Enable user-workload monitoring on OSD. Land the baseline Grafana dashboards (cluster health, DCGM GPU utilization grouped by `nvidia.com/gpu.product`, **GPU class allocation panel** that correlates `kube_pod_spec_nodeSelector` with actual node product labels to detect mis-scheduling per ADR-018). Land the Prometheus class-imbalance alert rule.
+- **Scope**: Land dashboards, alert rules, and instance CRs on top of the operators Session 03 installed. **User-workload monitoring was found already enabled by SRE** on this OSD hub (baseline capture in Session 03), so no enablement step — just consume what's there.
+  - Grafana decision: does CoO's `UIPlugin` (console-embedded dashboards) satisfy the "sales view" requirement, or do we want a standalone Grafana deployment? Answered this session; small ADR if the answer is "standalone."
+  - Instance CRs for the observability operators from Session 03: `LokiStack` CR (Loki backed by a MinIO bucket), `OpenTelemetryCollector` + `TempoStack` CRs via Cluster Observability Operator.
+  - Baseline dashboards: cluster health, DCGM GPU utilization grouped by `nvidia.com/gpu.product`, **GPU class allocation panel** that correlates `kube_pod_spec_nodeSelector` with actual node product labels to detect mis-scheduling per ADR-018.
+  - `PrometheusRule`s: class-imbalance alert, policy-serving latency SLOs (placeholder until Phase 1 serving lands).
 - **Deliverables**:
-  - `ConfigMap/user-workload-monitoring-config` in `openshift-user-workload-monitoring`.
-  - GrafanaDashboard CRs checked in under `infrastructure/observability/grafana-dashboards/`.
-  - PrometheusRule CRs under `infrastructure/observability/prometheus-rules/`.
-  - Tempo + Loki tenant configs in `infrastructure/observability/{tempo-config,loki-config}/`.
-- **Depends on**: Session 03 (Grafana/Logging/OTel-Tempo operators present), Session 06 (DCGM exporter confirmed healthy).
+  - Instance CRs under `infrastructure/gitops/apps/observability/` (new layer, new ApplicationSet).
+  - Dashboards as `GrafanaDashboard` or `UIPlugin` CRs depending on the Grafana decision.
+- **Depends on**: Session 03 (operators present), Session 06 (DCGM exporter confirmed healthy).
 - **OSD vs companion**: hub. Companion observability rolls in via Session 14 (Thanos federation).
 - **GPU workload?**: Reads GPU metrics; does not run GPU workloads.
 - **Estimated sessions**: 1.
@@ -236,8 +244,8 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 
 | # | Title | Depends on | Cluster | GPU class used | Est. sessions |
 |---|---|---|---|---|---|
-| 02 | GitOps bootstrap | 01 | hub | — | 1 |
-| 03 | Platform operators wave 1 | 02 | hub | — | 1–2 |
+| 02 | GitOps bootstrap | 01 | hub | — | 1 (done) |
+| 03 | Platform operators (CNPG, MinIO, Logging, Loki, CoO) | 02 | hub | — | 1 (done) |
 | 04 | Service Mesh 3 control plane | 02 | hub | — | 1 |
 | 05 | Orchestration operators (ACM, AMQ Streams, AAP) | 03 | hub | — | 1 |
 | 06 | RHOAI DSC validation + GPU smoke tests + MLflow backend | 03 | hub | L40S (L4 pending) | 1 + 0.25 follow-up |
