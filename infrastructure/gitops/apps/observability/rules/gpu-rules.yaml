@@ -1,0 +1,42 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: gpu-baseline
+  namespace: observability-rules
+  labels:
+    role: alert-rules
+spec:
+  groups:
+    - name: gpu.idle
+      interval: 1m
+      rules:
+        # Placeholder — surfaces long-idle GPUs so the user can scale down.
+        # Refined in Phase 1 once real GPU workloads (Isaac Sim, GR00T)
+        # produce baseline utilization envelopes.
+        - alert: GpuIdleLongRunning
+          expr: |
+            avg_over_time(DCGM_FI_DEV_GPU_UTIL[30m]) == 0
+          for: 30m
+          labels:
+            severity: info
+          annotations:
+            summary: "GPU {{ $labels.Hostname }} has been idle for 30+ minutes"
+            description: "DCGM_FI_DEV_GPU_UTIL has averaged 0% over the last 30m on {{ $labels.Hostname }}. Consider scaling down if the session is GPU-free."
+
+    - name: gpu.class-imbalance
+      interval: 5m
+      rules:
+        # Placeholder for the ADR-018 class-imbalance alert. Needs
+        # kube_pod_spec_node_selector from kube-state-metrics (on
+        # OSD, owned by platform Prometheus). Session 14 Thanos
+        # federation makes this query runnable from UWM; this rule
+        # is shipped as the target definition now so the refinement
+        # is a one-line expression edit later.
+        - alert: GpuClassMismatchPlaceholder
+          expr: vector(0)
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Placeholder; Session 14 enables the real expression."
+            description: "See ADR-018 for the intended alert design."

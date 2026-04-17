@@ -1,0 +1,20 @@
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: logging-loki
+  namespace: openshift-logging
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  size: 1x.demo
+  storage:
+    schemas:
+      - version: v13
+        effectiveDate: "2026-04-01"
+    secret:
+      name: loki-s3
+      type: s3
+  storageClassName: gp3
+  # OpenShift Console UIPlugin expects the openshift-logging tenant mode.
+  tenants:
+    mode: openshift-logging
