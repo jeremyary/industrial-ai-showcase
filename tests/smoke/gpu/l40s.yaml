@@ -1,0 +1,23 @@
+# L40S GPU smoke test. Run manually: oc apply -f tests/smoke/gpu/l40s.yaml
+# Expect: Job completes; logs show `nvidia-smi` output with an L40S device.
+# Clean up: oc delete -f tests/smoke/gpu/l40s.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-smoke-l40s
+  namespace: default
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-L40S
+      containers:
+        - name: smoke
+          image: nvcr.io/nvidia/cuda:12.6.0-base-ubi9
+          command: ["nvidia-smi"]
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
