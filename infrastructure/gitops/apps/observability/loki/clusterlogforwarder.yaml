@@ -1,0 +1,33 @@
+apiVersion: observability.openshift.io/v1
+kind: ClusterLogForwarder
+metadata:
+  name: collector
+  namespace: openshift-logging
+  annotations:
+    # Needs LokiStack (wave 3) and its gateway Service.
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  serviceAccount:
+    name: logging-collector
+  outputs:
+    - name: default-lokistack
+      type: lokiStack
+      lokiStack:
+        target:
+          name: logging-loki
+          namespace: openshift-logging
+        authentication:
+          token:
+            from: serviceAccount
+        dataModel: Otel
+      tls:
+        ca:
+          key: service-ca.crt
+          configMapName: openshift-service-ca.crt
+  pipelines:
+    - name: logs-to-loki
+      inputRefs:
+        - application
+        - infrastructure
+      outputRefs:
+        - default-lokistack

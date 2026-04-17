@@ -131,18 +131,16 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 
 ### Session 07 — Observability baseline
 
-- **Scope**: Land dashboards, alert rules, and instance CRs on top of the operators Session 03 installed. **User-workload monitoring was found already enabled by SRE** on this OSD hub (baseline capture in Session 03), so no enablement step — just consume what's there.
-  - Grafana decision: does CoO's `UIPlugin` (console-embedded dashboards) satisfy the "sales view" requirement, or do we want a standalone Grafana deployment? Answered this session; small ADR if the answer is "standalone."
-  - Instance CRs for the observability operators from Session 03: `LokiStack` CR (Loki backed by a MinIO bucket), `OpenTelemetryCollector` + `TempoStack` CRs via Cluster Observability Operator.
-  - Baseline dashboards: cluster health, DCGM GPU utilization grouped by `nvidia.com/gpu.product`, **GPU class allocation panel** that correlates `kube_pod_spec_nodeSelector` with actual node product labels to detect mis-scheduling per ADR-018.
-  - `PrometheusRule`s: class-imbalance alert, policy-serving latency SLOs (placeholder until Phase 1 serving lands).
-- **Deliverables**:
-  - Instance CRs under `infrastructure/gitops/apps/observability/` (new layer, new ApplicationSet).
-  - Dashboards as `GrafanaDashboard` or `UIPlugin` CRs depending on the Grafana decision.
-- **Depends on**: Session 03 (operators present), Session 06 (DCGM exporter confirmed healthy).
+- **Landed** (under `infrastructure/gitops/apps/observability/`, new `observability` ApplicationSet):
+  - `storage/` — dedicated community MinIO in `obs-storage` namespace, backs Loki.
+  - `loki/` — `LokiStack` (`1x.demo`, S3-backed), Logging 6.x `ClusterLogForwarder` with application+infrastructure pipelines, collector SA + required ClusterRoleBindings.
+  - `ui-plugins/` — Logging + Monitoring UIPlugins (CoO-provided; Red Hat-supported path; no standalone Grafana needed for Phase 0 per D3).
+  - `rules/` — `GpuIdleLongRunning` PrometheusRule (powers the 30m-idle signal for GPU scale-down); `GpuClassMismatchPlaceholder` stub for the ADR-018 alert that unlocks once Session 14 Thanos federation exposes kube-state-metrics to UWM.
+- **Scope narrowing (vs original plan)**: Tempo + OpenTelemetryCollector dropped. Cluster Observability Operator doesn't bundle them; the `tempo-product` + `opentelemetry-product` Red Hat operators are available in the catalog but installing them with zero trace-emitting workloads wastes operator slots. Defer to the Phase-1 session that introduces the first span-emitter.
+- **Still deferred**: standalone Grafana (Phase 1+ when Showcase Console needs an embeddable URL), app-workload ServiceMonitors (per-workload sessions).
+- **Depends on**: Session 03 (Loki + CoO), Session 04b (Argo CD cluster-admin RBAC).
 - **OSD vs companion**: hub. Companion observability rolls in via Session 14 (Thanos federation).
-- **GPU workload?**: Reads GPU metrics; does not run GPU workloads.
-- **Estimated sessions**: 1.
+- **Estimated sessions**: 1 (completed as one PR).
 
 ### Session 08 — Hub security baseline
 
@@ -251,7 +249,7 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 | 04 | Service Mesh 3 control plane | 02 | hub | — | 1 (done) |
 | 05 | Orchestration operators (ACM, AMQ Streams, AAP) | 03 | hub | — | 1 (done) |
 | 06 | RHOAI DSC validation + GPU smoke tests + MLflow backend | 03 | hub | L40S + L4 | 1 (done) |
-| 07 | Observability baseline | 03, 06 | hub | — | 1 |
+| 07 | Observability baseline (Loki + UIPlugins + GPU rules; Tempo/OTel deferred) | 03 | hub | — | 1 (done) |
 | 08 | Hub security baseline (Sigstore warn, Vault, NetworkPolicy template) | 03 | hub | — | 1 |
 | 09 | Companion provisioning (OD-8 + install) | (parallel with 02) | companion | — | 2 |
 | 10 | Companion baseline capture | 09 | companion | — | 1 |

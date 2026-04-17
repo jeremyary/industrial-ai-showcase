@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability-rules
+  labels:
+    # user-workload-monitoring picks up PrometheusRules from labeled
+    # namespaces; this label plus placement in a non-openshift-* ns
+    # makes the rules visible to UWM.
+    openshift.io/user-monitoring: "true"
