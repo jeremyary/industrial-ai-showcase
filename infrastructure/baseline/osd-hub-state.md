@@ -222,32 +222,25 @@ Baseline: nothing in place yet. Phase 0 Session 6 installs `policy.sigstore.dev`
 
 ## 11. Findings that need action
 
-These are the items that need to be raised, filed as SRE tickets, or resolved via ADR before Phase 0 can be called complete.
+These are the items that need follow-up before Phase 0 can be called complete.
 
-### Finding 1 — **L4 GPU nodes are absent (blocker for ADR-018 and Phase 1+)**
+### Finding 1 — **L4 GPU nodes are absent (Phase 1 prerequisite, not a blocker for Phase 0)**
 
-`CLAUDE.md` declares the GPU budget as **2–3 × L40S + 2–3 × L4**. The cluster currently has 3 × L40S and **zero L4 nodes**. Workloads planned for the L4 class (Metropolis VSS VLM, LangGraph agent brain LLM, USD Search embedding generation, USD Code / USD Verify NIMs — per ADR-018) have no nodes to land on.
+`CLAUDE.md` declares the GPU budget as **2–3 × L40S + 2–3 × L4**. The cluster currently has 3 × L40S and **zero L4 nodes**. Workloads planned for the L4 class (Metropolis VSS VLM, LangGraph agent brain LLM, USD Search embedding generation, USD Code / USD Verify NIMs — per ADR-018) have no nodes to land on today.
 
-**Recommended action**: open an SRE ticket to provision 2–3 L4-bearing worker nodes. On AWS, the `g6.xlarge` / `g6.2xlarge` families back L4. Include in the ticket:
-- Target count: 2–3 nodes
-- Instance family: `g6.xlarge` or equivalent L4-bearing family
-- Same AZ or multi-AZ preference (see Finding 4)
-- Expected GFD label after provisioning: `nvidia.com/gpu.product: NVIDIA-L4` (verify exact string once nodes land)
+**Status**: L4 provisioning is **self-service on this OSD instance**; no SRE ticket required. The hub owner adds `g6.xlarge` (or equivalent L4-bearing) worker nodes directly when the L4-targeted workloads come online.
 
-This ticket is on the **critical path for Phase 1** — without L4s, Metropolis VSS cannot be deployed to the class ADR-018 specifies.
+**Action for future sessions**: the first session that introduces an L4-targeted workload (currently slated for Phase 1 / Session 04 RHOAI GPU smoke tests, and Phase 1 Metropolis VSS work) re-runs the capture in Section 4 of this file to confirm the exact `nvidia.com/gpu.product` string (expected `NVIDIA-L4` but verified before first use, per ADR-018).
 
-### Finding 2 — **Service Mesh 3 is installed; ADR-006 specifies v2**
+No Phase 0 work is gated on L4 availability. Phase 1 Metropolis VSS is the first workload that must see L4 nodes present.
 
-ADR-006 decision was "OpenShift Service Mesh v2 (Istio-based) for east-west traffic" with a note that ambient-mode should be reconsidered "in a future ADR if ambient matures in Red Hat's offering." The installed operator is **OpenShift Service Mesh 3** (`servicemeshoperator3.v3.3.1`), not v2.
+### Finding 2 — **Service Mesh 3 is installed; ADR-006 is superseded by ADR-020**
 
-Service Mesh 3 is the upstream-Istio-based version (the `sail-operator` pattern) with both sidecar and ambient options. It is strategically aligned with where Red Hat is taking the mesh story, and installing v2 alongside it on the same cluster would be an anti-pattern.
+The installed operator is **OpenShift Service Mesh 3** (`servicemeshoperator3.v3.3.1`) rather than v2 as ADR-006 originally specified. Service Mesh 3 is the Istio-based `sail-operator` version with both sidecar and ambient options, strategically aligned with where Red Hat is taking the mesh story. Installing v2 alongside v3 would be an anti-pattern.
 
-**Recommended action**: draft **ADR-020** superseding ADR-006 with the Service Mesh 3 decision. Proposed body:
-- Decision: Service Mesh 3 (current `servicemeshoperator3`), Istio-based, with sidecar injection remaining the default pattern. Ambient mode evaluated per-workload as the reference matures.
-- Reason: v3 is the installed, supported, and strategically aligned version on the hub; v2 would be a regression.
-- Consequences: existing ADR-006 consequences (mTLS, tracing, traffic shaping, upfront complexity) still apply; no change in east-west zero-trust posture.
+**Status**: **Resolved.** ADR-020 (added in the same commit as this finding update) accepts Service Mesh 3, marks ADR-006 as superseded, and preserves sidecar-default as the workload-participation mode. See `docs/07-decisions.md` for the full ADR text.
 
-**Do not proceed with any Service Mesh-dependent work until ADR-020 is drafted and approved by the user.**
+All Service Mesh-dependent work from Phase 0 Session 03 onward proceeds against Service Mesh 3 CRs (`Istio` + `IstioCNI` + `IstioRevision` + `IstioRevisionTags`), not v2's `ServiceMeshControlPlane`.
 
 ### Finding 3 — **OpenShift GitOps (Argo CD) is not yet installed**
 
@@ -273,14 +266,11 @@ First concrete OSD SRE restriction encountered. ADR-017 anticipated this class o
 
 ---
 
-## 12. SRE ticket queue (consolidated)
+## 12. SRE ticket queue
 
-From the findings above, these tickets belong on the SRE queue and can be filed in parallel with Session 02+ work:
+No tickets required from Session 01 findings. L4 provisioning is self-service on this instance; the `oc debug node` restriction is accepted as-is per ADR-017.
 
-| Ticket | Priority | Finding |
-|---|---|---|
-| Provision 2–3 × L4-bearing worker nodes (`g6.xlarge` family or equivalent), same AZ acceptable for now | **Critical path for Phase 1** | Finding 1 |
-| (none — `oc debug node` restriction is accepted as-is, see ADR-017) | — | Finding 5 |
+Any future SRE-request needs will be captured in the relevant session's work notes.
 
 ---
 

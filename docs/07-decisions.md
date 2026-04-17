@@ -85,7 +85,7 @@ When a new material decision is made, add an entry. When a decision is supersede
 
 ## ADR-006: OpenShift Service Mesh v2 (Istio-based) for east-west traffic
 
-**Status**: Accepted
+**Status**: Superseded by ADR-020
 
 **Context**: Zero-trust and observability across many services are required. Options include OpenShift Service Mesh v2 (Istio), Service Mesh v3 if available, or no mesh with mTLS handled ad-hoc.
 
@@ -95,6 +95,8 @@ When a new material decision is made, add an entry. When a decision is supersede
 - All workload namespaces participate via sidecar injection.
 - We pay the complexity cost upfront; benefits (mTLS, tracing, traffic shaping) compound.
 - Sidecar-based rather than ambient — revisit in a future ADR if ambient matures in Red Hat's offering.
+
+**Superseded by ADR-020**: The 2026-04-17 hub baseline found Service Mesh 3 (the `sail-operator`-based Istio productization) already installed rather than v2. ADR-020 adopts Service Mesh 3 and preserves the sidecar-default posture this ADR established.
 
 ---
 
@@ -350,6 +352,32 @@ For Loop 4 (agentic orchestration on physical-AI operations), the question is wh
 - The HIL pattern itself becomes a differentiator to talk about — "Red Hat's posture is that LLM agents should ask operators before touching production" lands well with security-conscious customers.
 - Llama Stack is FIPS-compatible in 3.4 EA1, which aligns with the companion-cluster FIPS story (ADR-017). Agentic demos for regulated customers can demonstrate the combination.
 - OD-5 (agent brain model selection) gains a new criterion: the model must be compatible with Llama Stack's Agents API (most open-weight models with good tool-use are; check compatibility before committing).
+
+---
+
+## ADR-020: OpenShift Service Mesh 3 supersedes v2 for east-west traffic
+
+**Status**: Accepted (supersedes ADR-006)
+
+**Context**: ADR-006 chose OpenShift Service Mesh v2 (the Maistra-based Istio variant) for east-west traffic, with an explicit note that Service Mesh v3 was a valid option "if available."
+
+Phase 0 Session 01 baseline capture (2026-04-17) found that **Service Mesh 3 is the version installed on the OSD hub** — `servicemeshoperator3.v3.3.1`, via the `stable` channel of the `redhat-operators` catalog. Service Mesh 3 is the Red Hat productization of upstream Istio built on the `sail-operator` pattern and supports both sidecar injection (the default) and ambient mode. It is not backward-compatible with v2 at the operator or CR level.
+
+Installing v2 alongside v3 on the same cluster would be an anti-pattern: two control planes, conflicting sidecar injection webhooks, doubled operational cost. The pragmatic and strategically aligned choice is to honor what is installed.
+
+**Decision**: OpenShift Service Mesh 3 (the `servicemeshoperator3` operator, currently `v3.3.1` on the hub) is the single mesh for east-west traffic. Sidecar injection remains the default workload-participation mode, preserving ADR-006's operational posture (mTLS, workload identity, east-west tracing). Ambient mode is evaluated per-workload as the reference matures; no blanket commitment either direction.
+
+ADR-006 is superseded. All prior references to "Service Mesh v2" in the project docs should be read as "Service Mesh 3" going forward; a doc sweep happens naturally as Phase 0 sessions touch the affected files.
+
+**Consequences**:
+
+- All workload namespaces still participate via sidecar injection. Zero-trust posture from ADR-006 is preserved; Service Mesh 3 is a capability superset of v2, so nothing is lost.
+- The CR topology differs from v2: `ServiceMeshControlPlane` (v2) → `Istio` + `IstioCNI` + `IstioRevision` + `IstioRevisionTags` (v3). Any mesh CRs in this repo must use v3 shapes from the start; there are none yet (pre-implementation), so no migration burden.
+- Ambient mode becomes available as an option for workloads where sidecar overhead is costly — a live-demo Isaac Sim or Kit App Streaming pod with sidecar-induced GPU-adjacent latency is a plausible candidate. Any adoption of ambient-per-workload requires its own ADR so we don't drift into a mixed-mode posture by accident.
+- FIPS compatibility is unchanged — Service Mesh 3 is FIPS-compatible, aligning with ADR-017 (companion) and ADR-019 (Llama Stack).
+- Doc updates: `docs/01-architecture-overview.md`, `docs/04-phased-plan.md`, and any other file referencing "Service Mesh v2" get corrected as the Phase 0 session that lands mesh CRs touches them.
+
+---
 
 These are decisions we're aware of but not yet making — they're documented in `09-risks-and-open-questions.md` rather than being forced here.
 
