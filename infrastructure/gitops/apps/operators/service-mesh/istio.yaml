@@ -5,8 +5,7 @@ metadata:
 spec:
   # Cluster-scoped CR. spec.namespace is where the istiod control plane
   # pod lands. Revision name derives from metadata.name ("default"),
-  # so workloads opt in via istio.io/rev: default (or, via the tag
-  # below, the legacy istio-injection: enabled label).
+  # so workloads opt in via istio.io/rev: default.
   namespace: istio-system
   version: v1.28.5
   # `default` profile on OpenShift layers the `openshift` profile on
@@ -14,3 +13,15 @@ spec:
   profile: default
   updateStrategy:
     type: InPlace
+  values:
+    pilot:
+      # Default is 500m cpu request which can't fit on these
+      # OSD workers (already at 97-99% allocated). 100m suffices
+      # for an idle-to-moderate mesh; revisit if istiod saturates.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
