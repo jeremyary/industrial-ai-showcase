@@ -91,15 +91,16 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 
 ### Session 04 — Service Mesh 3 control plane
 
-- **Scope**: Install the Service Mesh 3 control plane per ADR-020 — `Istio` + `IstioCNI` + `IstioRevision` + `IstioRevisionTags` CRs. Establish the sidecar-injection convention for future workload namespaces. Deliberate choice not to enable ambient mode cluster-wide; ambient adoption per-workload needs its own ADR.
-- **Deliverables**:
-  - CRs under `infrastructure/operators/service-mesh/`.
-  - Control plane namespace convention (e.g., `istio-system` for the `Istio` CR) documented.
-  - Workload-namespace injection tag (e.g., `istio-injection: enabled`) convention in the chart library.
-- **Depends on**: Session 02 (GitOps bootstrap). Independent of Session 03.
-- **OSD vs companion**: hub. Companion mesh install is folded into Session 12 to keep companion-track overhead low.
-- **GPU workload?**: No.
-- **Estimated sessions**: 1.
+- **Scope**: Stand up the east-west mesh per ADR-020. Deliberate choice not to enable ambient mode; ambient adoption per-workload needs its own ADR.
+- **Landed** (under `infrastructure/gitops/apps/operators/service-mesh/`, reconciled via the `operators` ApplicationSet):
+  - `Istio` CR `default` (cluster-scoped), spec.namespace `istio-system`, profile `default` (openshift profile layered on top automatically on OCP), version pinned `v1.28.5`.
+  - `IstioCNI` CR `default`, spec.namespace `istio-cni`, matching version.
+  - `IstioRevisionTag` `default` → `Istio/default`, enabling both `istio.io/rev: default` and the legacy `istio-injection: enabled` labels.
+- **Recon finding**: RHOAI 3.4 EA1 pre-ships an Istio instance named `openshift-gateway` in `openshift-ingress`, owned by the `data-science-gateway-class` GatewayClass. It backs the Data Science Gateway / Models-as-a-Service ingress. Session 04 creates a **separate** instance; the two coexist. Future sessions touching ingress or MaaS should respect RHOAI's instance.
+- **Deferred to Session 08 (security baseline)**: mesh-scoped `PeerAuthentication` STRICT, default-deny `AuthorizationPolicy`. Lands when there are workloads to policy-test against.
+- **Depends on**: Session 02. Independent of Session 03.
+- **OSD vs companion**: hub. Companion mesh install is folded into Session 12.
+- **Estimated sessions**: 1 (completed as one PR).
 
 ### Session 05 — Orchestration operators
 
@@ -246,7 +247,7 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 |---|---|---|---|---|---|
 | 02 | GitOps bootstrap | 01 | hub | — | 1 (done) |
 | 03 | Platform operators (CNPG, MinIO, Logging, Loki, CoO) | 02 | hub | — | 1 (done) |
-| 04 | Service Mesh 3 control plane | 02 | hub | — | 1 |
+| 04 | Service Mesh 3 control plane | 02 | hub | — | 1 (done) |
 | 05 | Orchestration operators (ACM, AMQ Streams, AAP) | 03 | hub | — | 1 |
 | 06 | RHOAI DSC validation + GPU smoke tests + MLflow backend | 03 | hub | L40S (L4 pending) | 1 + 0.25 follow-up |
 | 07 | Observability baseline | 03, 06 | hub | — | 1 |
