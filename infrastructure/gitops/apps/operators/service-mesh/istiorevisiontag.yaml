@@ -1,0 +1,12 @@
+apiVersion: sailoperator.io/v1
+kind: IstioRevisionTag
+metadata:
+  name: default
+spec:
+  # Tag "default" -> the active revision of the `default` Istio CR.
+  # Lets workloads inject via either label style:
+  #   istio.io/rev: default       (revision-aware, preferred)
+  #   istio-injection: enabled    (legacy; works when a `default` tag exists)
+  targetRef:
+    kind: Istio
+    name: default
