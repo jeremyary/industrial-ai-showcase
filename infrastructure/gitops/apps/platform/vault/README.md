@@ -2,71 +2,59 @@
 
 HashiCorp Vault, single-replica, file-backed, for the Phase 0 Secrets substrate. Swap to HA Raft + KMS-backed unseal for production per customer site.
 
-## One-time init + unseal (after first sync)
+There is no external Route; Vault is reached in-cluster at `http://vault.vault.svc.cluster.local:8200`. All setup happens via `oc exec` into the pod.
 
-Vault starts sealed. Run these once:
+## One-time init + unseal (after first sync)
 
 ```bash
 # 1. Initialize
 oc exec -n vault vault-0 -- vault operator init -key-shares=5 -key-threshold=3
 
 # Record the 5 unseal keys and the initial root token somewhere durable.
-# These are NEVER committed to Git. Rotate the root token after the
-# substrate is operational.
+# Never commit them.
 
-# 2. Unseal (three of five keys)
+# 2. Unseal (three of the five keys)
 for key in KEY1 KEY2 KEY3; do
   oc exec -n vault vault-0 -- vault operator unseal "$key"
 done
-
-# 3. Export root token to your shell for subsequent setup
-export VAULT_TOKEN=<initial-root-token>
-export VAULT_ADDR=http://$(oc get route -n vault vault -o jsonpath='{.spec.host}')  # if Route exists
 ```
 
 ## One-time KV engine + K8s auth setup
 
-Executed by an operator with root token:
+Do this work inside the pod — the container's `VAULT_ADDR` is already set to `http://127.0.0.1:8200`, and the pod's `sh` is BusyBox which doesn't tolerate backslash-continuations or indented heredoc terminators.
 
 ```bash
-# Enable KV v2 at kv/
+oc exec -n vault -it vault-0 -- sh
+# inside the pod:
+
+export VAULT_TOKEN=<initial-root-token>
+
 vault secrets enable -path=kv kv-v2
 
-# Enable Kubernetes auth
 vault auth enable kubernetes
 
-# Wire to the cluster's TokenReview API
-vault write auth/kubernetes/config \
-  kubernetes_host=https://kubernetes.default.svc:443 \
-  disable_iss_validation=true
+vault write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc:443 disable_iss_validation=true
 
-# Policy allowing VSO to read any kv secret (scope tightening is a later ADR)
-vault policy write vso-read - <<EOF
-path "kv/data/*" {
-  capabilities = ["read"]
-}
-EOF
+# Pipe the policy body; heredoc terminators with leading whitespace don't close in BusyBox sh.
+printf 'path "kv/data/*" {\n  capabilities = ["read"]\n}\n' | vault policy write vso-read -
 
-# Role binding: any ServiceAccount in any namespace can assume this role
-vault write auth/kubernetes/role/vso-read \
-  bound_service_account_names='*' \
-  bound_service_account_namespaces='*' \
-  policies=vso-read \
-  ttl=24h
+# One-liner role binding (no backslash continuations).
+vault write auth/kubernetes/role/vso-read bound_service_account_names='*' bound_service_account_namespaces='*' policies=vso-read ttl=24h
 ```
 
-## Seeding the Phase-0 placeholder Secrets into Vault
+## Seed the Phase-0 placeholder values
 
-Run once after Vault is unsealed:
+VSO projects these KV paths into Kubernetes Secrets in the consumer namespaces. Put the values once; rotation later is a `vault kv put` with new values + a pod restart of the consumer.
 
 ```bash
-vault kv put kv/mlflow/s3   AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
-vault kv put kv/obs/s3      AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
-vault kv put kv/cosign/signer   private-key-pem=@cosign.key   password=...
+# Still inside the pod shell from the previous step
+vault kv put kv/mlflow/s3 AWS_ACCESS_KEY_ID=mlflow-root AWS_SECRET_ACCESS_KEY=phase-0-placeholder-rotate-in-s08
+vault kv put kv/obs/s3 AWS_ACCESS_KEY_ID=obs-root AWS_SECRET_ACCESS_KEY=phase-0-placeholder-rotate-in-s08
+vault kv put kv/loki/s3 access_key_id=obs-root access_key_secret=phase-0-placeholder-rotate-in-s08 bucketnames=loki-logs endpoint=http://minio.obs-storage.svc.cluster.local:9000 region=us-east-1
 ```
 
-VSO CRs under `infrastructure/gitops/apps/security/*-secrets/` reference these KV paths and project them as Kubernetes Secrets into the right namespaces.
+The `VaultStaticSecret` CRs in `apps/platform/mlflow/`, `apps/observability/storage/`, and `apps/observability/loki/` reference these paths.
 
 ## After a pod restart
 
-Vault re-seals. Re-run the unseal step (step 2 above). Production deploys use KMS-backed auto-unseal to avoid this.
+Vault re-seals. Re-run the unseal step above. Production deploys use KMS-backed auto-unseal to avoid this.
