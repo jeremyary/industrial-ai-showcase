@@ -1,11 +1,15 @@
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
-  name: cloud-native-postgresql
+  name: cloudnative-pg
   namespace: cnpg-system
 spec:
-  channel: stable-v1.29
-  name: cloud-native-postgresql
+  # Use the community CloudNativePG build (public ghcr.io images,
+  # no pull secret). The cloud-native-postgresql package is EDB's
+  # commercial build and requires a docker.enterprisedb.com pull
+  # secret we don't have.
+  channel: stable-v1
+  name: cloudnative-pg
   source: certified-operators
   sourceNamespace: openshift-marketplace
   installPlanApproval: Automatic
