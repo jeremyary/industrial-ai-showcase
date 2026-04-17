@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: operators
+  namespace: openshift-gitops
+spec:
+  # Git generator: one Application per directory under apps/operators/.
+  # The directory is currently empty; Sessions 03+ add operator
+  # subdirectories and Applications spring up automatically.
+  generators:
+    - git:
+        repoURL: https://github.com/jeremyary/industrial-ai-showcase.git
+        revision: main
+        directories:
+          - path: infrastructure/gitops/apps/operators/*
+  template:
+    metadata:
+      name: 'operators-{{path.basename}}'
+      labels:
+        phase: phase-0
+        layer: operators
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/jeremyary/industrial-ai-showcase.git
+        targetRevision: main
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        # Placeholder; per-operator manifests declare their own
+        # target namespaces explicitly. Argo CD uses this only as a
+        # default when a manifest omits metadata.namespace.
+        namespace: openshift-gitops
+      # Manual sync per the Session 02 plan (D4). No `automated` block
+      # at all — OutOfSync is surfaced in the UI but a human clicks
+      # Sync. Pruning of removed resources happens when the human
+      # clicks Sync with prune enabled.
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
