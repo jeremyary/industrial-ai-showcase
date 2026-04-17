@@ -22,11 +22,7 @@ spec:
   artifactsDestination: s3://mlflow-artifacts/
   env:
     - name: MLFLOW_S3_ENDPOINT_URL
-      value: https://minio.mlflow.svc.cluster.local
-    # MinIO AIStor uses a self-signed cert by default; tell MLflow's
-    # S3 SDK to skip verification for cluster-internal traffic.
-    - name: MLFLOW_S3_IGNORE_TLS
-      value: "true"
+      value: http://minio.mlflow.svc.cluster.local:9000
   envFrom:
     - secretRef:
         name: mlflow-s3-credentials

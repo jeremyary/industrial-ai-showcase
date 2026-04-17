@@ -76,7 +76,7 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 - **Scope**: Install the "platform plumbing" operators that every application needs. Reshape per Session 03 cluster recon (2026-04-17): ODF dropped in favor of MinIO (ADR-021); OpenTelemetry+Tempo+Grafana individual operators replaced by Cluster Observability Operator (Red Hat-supported, subsumes the individual pieces); Grafana decision deferred to Session 07.
 - **Operators landed**:
   - `cloud-native-postgresql` (certified, channel `stable-v1.29`) — Postgres for MLflow, Fleet Manager state, LangGraph state.
-  - `minio-object-store-operator` (certified, channel `stable`) — in-cluster S3 per ADR-021.
+  - ~~`minio-object-store-operator`~~ — **removed in Session 06b** (requires commercial license). Replaced by community MinIO deployed as plain manifests alongside each consumer per ADR-021.
   - `cluster-logging` (redhat, channel `stable-6.5`) — log routing via `ClusterLogForwarder`.
   - `loki-operator` (redhat, channel `stable-6.5`) — log storage via `LokiStack`.
   - `cluster-observability-operator` (redhat, channel `stable`) — Prometheus / OTel / Tempo in one operator.
@@ -122,7 +122,7 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
   - `tests/smoke/gpu/{l40s,l4}.yaml` — plain Jobs (`oc apply -f` on demand). L40S runs immediately. L4 nodes now present (user self-provisioned 2× `g6.2xlarge` during the session); both classes smoke-testable.
   - DSC drift re-check in `infrastructure/baseline/osd-hub-state.md` — no drift from Session 01.
   - New `platform` ApplicationSet layer (`clusters/hub/appsets/platform.yaml` + `apps/platform/*` generator).
-  - `apps/platform/mlflow/` backend: CNPG Cluster + MinIO AIStor ObjectStore + bucket-init Job (`mc mb mlflow-artifacts`) + MLflow CR wiring `backendStoreUriFrom` → CNPG Secret, `artifactsDestination: s3://mlflow-artifacts/`, `envFrom: mlflow-s3-credentials`.
+  - `apps/platform/mlflow/` backend: CNPG Cluster + community MinIO (PVC + Deployment + Service on `quay.io/minio/minio`) + bucket-init Job (`mc mb mlflow-artifacts`) + MLflow CR wiring `backendStoreUriFrom` → CNPG Secret, `artifactsDestination: s3://mlflow-artifacts/`, `envFrom: mlflow-s3-credentials`.
   - Cleanup pre-apply: `oc delete mlflow/mlflow` + `oc delete namespace ai-showcase-mlops` (residue from abandoned three-chart Helm release).
 - **Security shortcut**: placeholder credentials in Git. Session 08 swaps to Vault-sourced ExternalSecrets.
 - **Depends on**: Sessions 03 (CNPG, MinIO operators) + 04b (Argo CD cluster-admin RBAC).

@@ -4,8 +4,6 @@ metadata:
   name: mlflow-bucket-init
   namespace: mlflow
   annotations:
-    # Run after the ObjectStore is up; Argo CD sync-wave 2 gives us
-    # that ordering (ObjectStore + secrets in default wave 0).
     argocd.argoproj.io/sync-wave: "2"
 spec:
   backoffLimit: 10
@@ -21,17 +19,25 @@ spec:
             - -c
             - |
               set -e
-              until mc alias set local https://minio.mlflow.svc.cluster.local \
-                "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" --insecure; do
+              until mc alias set local http://minio.mlflow.svc.cluster.local:9000 \
+                "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do
                 echo "waiting for minio endpoint..."
                 sleep 5
               done
-              mc mb --ignore-existing local/mlflow-artifacts --insecure
-              mc anonymous set none local/mlflow-artifacts --insecure
+              mc mb --ignore-existing local/mlflow-artifacts
               echo "bucket ready"
           env:
+            # OpenShift restricted SCC runs this container with an
+            # arbitrary non-root UID; the default HOME (/) is read-only
+            # to that UID, so mc's config-dir (~/.mc) can't be created.
+            # Redirect HOME to the writable /tmp so mc config lands there.
+            - name: HOME
+              value: /tmp
             - name: MINIO_ROOT_USER
-              value: mlflow-root
+              valueFrom:
+                secretKeyRef:
+                  name: mlflow-s3-credentials
+                  key: AWS_ACCESS_KEY_ID
             - name: MINIO_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:

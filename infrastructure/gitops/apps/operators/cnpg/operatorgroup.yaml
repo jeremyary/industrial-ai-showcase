@@ -3,6 +3,5 @@ kind: OperatorGroup
 metadata:
   name: cnpg-system
   namespace: cnpg-system
-spec:
-  targetNamespaces:
-    - cnpg-system
+spec: {}  # AllNamespaces mode — CNPG manages Clusters in tenant namespaces
+          # (e.g., mlflow, future fleet-manager, langgraph-orchestrator).
