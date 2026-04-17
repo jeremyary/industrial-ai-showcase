@@ -64,9 +64,9 @@ Captured state of the OpenShift Dedicated hub cluster. This file is living docum
 nodeSelector:
   nvidia.com/gpu.product: NVIDIA-L40S
 
-# L4 pool (0 nodes currently — SRE ticket needed, see Findings):
+# L4 pool (2 nodes, confirmed Session 06 on 2026-04-17):
 nodeSelector:
-  nvidia.com/gpu.product: NVIDIA-L4    # expected form; verify once L4 nodes land
+  nvidia.com/gpu.product: NVIDIA-L4
 ```
 
 Per-L40S-node GFD labels (identical across all three L40S workers):
@@ -81,6 +81,17 @@ Per-L40S-node GFD labels (identical across all three L40S workers):
 | `nvidia.com/gpu.machine` | `g6e.4xlarge` |
 | `nvidia.com/mig.strategy` | `single` |
 | `feature.node.kubernetes.io/pci-10de.present` | `true` |
+| `.status.capacity["nvidia.com/gpu"]` | `1` |
+
+Per-L4-node GFD labels (identical across both L4 workers, captured Session 06):
+
+| Label | Value |
+|---|---|
+| `nvidia.com/gpu.product` | `NVIDIA-L4` |
+| `nvidia.com/gpu.memory` | `23034` (MiB) |
+| `nvidia.com/gpu.family` | `ada-lovelace` |
+| `nvidia.com/gpu.count` | `1` |
+| `nvidia.com/gpu.machine` | `g6.2xlarge` |
 | `.status.capacity["nvidia.com/gpu"]` | `1` |
 
 MIG strategy `single` means one GPU per node exposed as one resource — consistent with ADR-018's "no MIG, no time-slicing, no vGPU splitting" rule.
@@ -224,15 +235,11 @@ Baseline: nothing in place yet. Phase 0 Session 6 installs `policy.sigstore.dev`
 
 These are the items that need follow-up before Phase 0 can be called complete.
 
-### Finding 1 — **L4 GPU nodes are absent (Phase 1 prerequisite, not a blocker for Phase 0)**
+### Finding 1 — **L4 GPU nodes — RESOLVED as of Session 06 (2026-04-17)**
 
-`CLAUDE.md` declares the GPU budget as **2–3 × L40S + 2–3 × L4**. The cluster currently has 3 × L40S and **zero L4 nodes**. Workloads planned for the L4 class (Metropolis VSS VLM, LangGraph agent brain LLM, USD Search embedding generation, USD Code / USD Verify NIMs — per ADR-018) have no nodes to land on today.
+Original state: 3× L40S + 0× L4. User self-provisioned 2× `g6.2xlarge` L4 nodes on 2026-04-17; labels confirmed: `nvidia.com/gpu.product: NVIDIA-L4`, 23 GiB memory, ada-lovelace family. See Section 4 for the full label table.
 
-**Status**: L4 provisioning is **self-service on this OSD instance**; no SRE ticket required. The hub owner adds `g6.xlarge` (or equivalent L4-bearing) worker nodes directly when the L4-targeted workloads come online.
-
-**Action for future sessions**: the first session that introduces an L4-targeted workload (currently slated for Phase 1 / Session 04 RHOAI GPU smoke tests, and Phase 1 Metropolis VSS work) re-runs the capture in Section 4 of this file to confirm the exact `nvidia.com/gpu.product` string (expected `NVIDIA-L4` but verified before first use, per ADR-018).
-
-No Phase 0 work is gated on L4 availability. Phase 1 Metropolis VSS is the first workload that must see L4 nodes present.
+Canonical GPU product strings for ADR-018 are both now live and verified on-cluster.
 
 ### Finding 2 — **Service Mesh 3 is installed; ADR-006 is superseded by ADR-020**
 
@@ -258,11 +265,15 @@ First concrete OSD SRE restriction encountered. ADR-017 anticipated this class o
 
 **Recommended action**: none direct. Note for future sessions that any host-level inspection (kernel params, CPU features, IOMMU state) cannot be done via `oc debug node` on this hub and should be done on the companion cluster where we own the substrate.
 
-### Finding 6 — **MLflow is already enabled**
+### Finding 6 — **MLflow backend wired in Session 06**
 
-`mlflowoperator` is `Managed` in the DSC and the DSC is `Ready`. The Phase 1 Work Item 0 plan said "Inspect the existing RHOAI 3.4 EA1 DataScienceCluster on the hub; confirm MLflow component state. Enable the MLflow component in the DSC if not already active." The answer is: already active.
+`mlflowoperator` Managed in DSC, MLflow v3.9.0 per `.status.components.mlflowoperator.releases`. Session 06 landed the backend: CNPG `Cluster/mlflow-db` in `mlflow` namespace, MinIO AIStor `ObjectStore/mlflow` with bucket `mlflow-artifacts`, and a cluster-scoped `MLflow/mlflow` CR wired to both. Prior residue (cluster-scoped `MLflow/mlflow` from the abandoned three-chart Helm release + empty `ai-showcase-mlops` namespace) was removed as a pre-apply step.
 
-**Recommended action**: Phase 1 Work Item 0 scope reduces to: configure the MLflow backend (Postgres via CNPG, S3 artifact store via ODF RGW or equivalent) and the `workloads/common/python-lib/tracking/` abstraction. The "enable in DSC" step can be skipped.
+The `workloads/common/python-lib/tracking/` abstraction (Phase 1 scope) reads from this MLflow instance.
+
+### DSC drift check — 2026-04-17 (Session 06)
+
+Re-ran Section 7 checks against the running DSC. No drift: `trainer`, `mlflowoperator`, `llamastackoperator`, `trustyai`, `kserve`, `ray`, `trainingoperator`, `modelregistry`, `workbenches`, `aipipelines`, `feastoperator`, `dashboard` — all Managed; `sparkoperator` unset; `kueue` Unmanaged. Release banner: `OpenShift AI Self-Managed v3.4.0-ea.1`.
 
 ---
 

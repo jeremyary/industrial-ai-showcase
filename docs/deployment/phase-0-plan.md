@@ -116,19 +116,18 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 - **GPU workload?**: No.
 - **Estimated sessions**: 1 (completed as one PR).
 
-### Session 06 — RHOAI DSC validation + GPU smoke tests
+### Session 06 — RHOAI DSC validation + GPU smoke tests + MLflow backend
 
-- **Scope**: Validate the running RHOAI 3.4.0 EA1 DataScienceCluster matches expectations per `CLAUDE.md` and ADR-015. Run GPU smoke tests.
-- **Deliverables**:
-  - Confirmation test Jobs in `tests/smoke/gpu/` for each GPU class:
-    - L40S: `nodeSelector: { nvidia.com/gpu.product: NVIDIA-L40S }` + `resources.limits.nvidia.com/gpu: 1`; runs `nvidia-smi`; passes.
-    - L4: same pattern with `NVIDIA-L4` — **runs once L4 nodes are self-provisioned** (per Finding 1 of the baseline). If L4s are not present at session time, skip with a clearly noted TODO and come back to it when L4s land.
-  - RHOAI DSC component matrix confirmation (re-run of the baseline Section 7 check; flag any drift).
-  - MLflow backend wiring (Postgres via CNPG — needs Session 03; S3-compatible bucket via ODF or equivalent) — this is the remaining part of Phase 1 Work Item 0 per `docs/04-phased-plan.md`, pulled left since the DSC toggle is already Managed.
-- **Depends on**: Session 03 (CNPG + storage).
+- **Landed**:
+  - `tests/smoke/gpu/{l40s,l4}.yaml` — plain Jobs (`oc apply -f` on demand). L40S runs immediately. L4 nodes now present (user self-provisioned 2× `g6.2xlarge` during the session); both classes smoke-testable.
+  - DSC drift re-check in `infrastructure/baseline/osd-hub-state.md` — no drift from Session 01.
+  - New `platform` ApplicationSet layer (`clusters/hub/appsets/platform.yaml` + `apps/platform/*` generator).
+  - `apps/platform/mlflow/` backend: CNPG Cluster + MinIO AIStor ObjectStore + bucket-init Job (`mc mb mlflow-artifacts`) + MLflow CR wiring `backendStoreUriFrom` → CNPG Secret, `artifactsDestination: s3://mlflow-artifacts/`, `envFrom: mlflow-s3-credentials`.
+  - Cleanup pre-apply: `oc delete mlflow/mlflow` + `oc delete namespace ai-showcase-mlops` (residue from abandoned three-chart Helm release).
+- **Security shortcut**: placeholder credentials in Git. Session 08 swaps to Vault-sourced ExternalSecrets.
+- **Depends on**: Sessions 03 (CNPG, MinIO operators) + 04b (Argo CD cluster-admin RBAC).
 - **OSD vs companion**: hub.
-- **GPU workload?**: Yes — smoke-test only, L40S immediately, L4 pending.
-- **Estimated sessions**: 1, plus a ~0.25-session re-visit once L4 nodes exist.
+- **Estimated sessions**: 1 (completed as one PR).
 
 ### Session 07 — Observability baseline
 
@@ -251,7 +250,7 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 | 03 | Platform operators (CNPG, MinIO, Logging, Loki, CoO) | 02 | hub | — | 1 (done) |
 | 04 | Service Mesh 3 control plane | 02 | hub | — | 1 (done) |
 | 05 | Orchestration operators (ACM, AMQ Streams, AAP) | 03 | hub | — | 1 (done) |
-| 06 | RHOAI DSC validation + GPU smoke tests + MLflow backend | 03 | hub | L40S (L4 pending) | 1 + 0.25 follow-up |
+| 06 | RHOAI DSC validation + GPU smoke tests + MLflow backend | 03 | hub | L40S + L4 | 1 (done) |
 | 07 | Observability baseline | 03, 06 | hub | — | 1 |
 | 08 | Hub security baseline (Sigstore warn, Vault, NetworkPolicy template) | 03 | hub | — | 1 |
 | 09 | Companion provisioning (OD-8 + install) | (parallel with 02) | companion | — | 2 |
