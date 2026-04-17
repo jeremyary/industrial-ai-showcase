@@ -387,14 +387,14 @@ ADR-006 is superseded. All prior references to "Service Mesh v2" in the project 
 
 Installing ODF on cloud-managed OSD duplicates EBS block storage behind a Ceph layer whose storage substrate (local disks) doesn't match Nitro cleanly. ADR-015 already hedged "ODF or OSD-equivalent"; this ADR picks the OSD-equivalent.
 
-**Decision**: Install the MinIO operator (`minio-object-store-operator`, Certified catalog) on the OSD hub. MinIO tenants provide S3-compatible object storage backed by PVCs on the existing `gp3` StorageClass. **ODF is not installed on the hub.** The companion cluster revisits ODF in Session 12 if it lands on multi-node bare metal where Ceph's storage model fits.
+**Decision**: Install the MinIO operator (`minio-object-store-operator`, Certified catalog) on **both** the OSD hub and the companion cluster once it comes online. MinIO tenants provide S3-compatible object storage backed by PVCs on the host's default StorageClass (`gp3` on hub; whatever the companion surfaces). **ODF is not installed anywhere in this reference.** One operational model across hub and companion is simpler than two, and MinIO tenants mirror cleanly to air-gapped customer sites where AWS S3 isn't reachable.
 
 **Consequences**:
 - MLflow artifact store (ADR-015) is a MinIO tenant bucket. No change to the `workloads/common/python-lib/tracking/` abstraction.
 - USD asset bucket for Nucleus-adjacent services is a MinIO tenant. Keeps the `ovstorage` migration story (ADR-002) on the table — MinIO buckets are swappable for `ovstorage` without code change.
 - Backup/DR for object content is PVC-level (EBS snapshots). Acceptable for a reference deployment; production customers bring their own backup story.
 - Air-gap: MinIO tenant images mirror cleanly; compatible with customer sites where AWS S3 is unavailable.
-- The companion cluster decision (ODF vs MinIO) is deferred to Session 12 and depends on companion hardware topology.
+- Companion cluster gets MinIO too (Session 12 installs the same Subscription); ODF is not revisited.
 
 ---
 
