@@ -1,0 +1,16 @@
+apiVersion: sailoperator.io/v1
+kind: Istio
+metadata:
+  name: default
+spec:
+  # Cluster-scoped CR. spec.namespace is where the istiod control plane
+  # pod lands. Revision name derives from metadata.name ("default"),
+  # so workloads opt in via istio.io/rev: default (or, via the tag
+  # below, the legacy istio-injection: enabled label).
+  namespace: istio-system
+  version: v1.28.5
+  # `default` profile on OpenShift layers the `openshift` profile on
+  # top automatically (per CRD doc). Sidecar mode; not ambient.
+  profile: default
+  updateStrategy:
+    type: InPlace

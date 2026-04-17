@@ -1,0 +1,10 @@
+apiVersion: sailoperator.io/v1
+kind: IstioCNI
+metadata:
+  name: default
+spec:
+  # Cluster-scoped CR; spec.namespace is where the IstioCNI DaemonSet
+  # and its supporting resources land.
+  namespace: istio-cni
+  version: v1.28.5
+  profile: default
