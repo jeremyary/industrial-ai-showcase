@@ -19,6 +19,11 @@ spec:
       labels:
         phase: phase-0
         layer: operators
+      annotations:
+        # Server-side diff sidesteps spurious drift from fields the API
+        # server auto-populates (terminationGracePeriodSeconds,
+        # imagePullPolicy, etc.) that aren't in our manifests.
+        argocd.argoproj.io/compare-options: ServerSideDiff=true
     spec:
       project: default
       source:
