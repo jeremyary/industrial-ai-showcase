@@ -91,9 +91,11 @@ Items fall into four buckets: **open decisions** (things we will decide, we're j
 
 **Trigger to resolve**: Phase 3 customer-handoff work.
 
-### OD-8: Companion cluster host selection
+### OD-8: Companion cluster host selection — RESOLVED (Session 09, 2026-04-17)
 
-**Question**: Per ADR-017, the self-managed companion cluster needs a host. Three candidates are viable from existing hardware: GMKTec Evo-X2 Mini PC (128 GB RAM, Ryzen AI Max+ 395 with integrated Radeon 8060S, 2 TB SSD), ORIGIN PC (RTX 5090, 128 GB RAM, i9-13900KX32), or dedicated lab hardware not yet acquired.
+**Resolution**: GMKTec Evo-X2 as the Phase 0–3 companion, **virtualized**. Fedora 43 host retains all existing workloads; OCP 4.21.5 runs inside a KVM VM (16 vCPU / 64 GiB / 250 GB) with macvtap on `eno1` for direct LAN attach. Static IP 10.0.0.80, cluster name `companion`, baseDomain `lab.local`. Nested virt on AMD-V enables KubeVirt guests when Session 12 adds OpenShift Virtualization. ORIGIN PC (RTX 5090) becomes the secondary Phase 4+ companion specifically for vGPU Kit-workstation demos — same VM-based pattern, RTX 5090 passthrough to the OCP VM. Install source material lives at `tools/companion-install/`.
+
+**Historical question**: Per ADR-017, the self-managed companion cluster needs a host. Three candidates are viable from existing hardware: GMKTec Evo-X2 Mini PC (128 GB RAM, Ryzen AI Max+ 395 with integrated Radeon 8060S, 2 TB SSD), ORIGIN PC (RTX 5090, 128 GB RAM, i9-13900KX32), or dedicated lab hardware not yet acquired.
 
 **Why it's open**: each host has trade-offs:
 - **GMKTec Evo-X2**: plenty of CPU/RAM for the baseline companion workloads (OpenShift Virtualization without vGPU, MachineConfig STIG, FIPS, cluster-scoped Sigstore admission, air-gap validation). The integrated Radeon is useless for NVIDIA vGPU passthrough, so the Kit-workstation-with-vGPU demonstration is blocked on this host alone. Best for the "infrastructure-side differentiators" but not the vGPU story.
