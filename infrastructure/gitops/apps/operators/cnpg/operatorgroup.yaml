@@ -1,0 +1,8 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: cnpg-system
+  namespace: cnpg-system
+spec:
+  targetNamespaces:
+    - cnpg-system
