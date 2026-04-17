@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hub-root
+  namespace: openshift-gitops
+  labels:
+    phase: phase-0
+    layer: root
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jeremyary/industrial-ai-showcase.git
+    targetRevision: main
+    path: infrastructure/gitops/clusters/hub
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  # Manual sync, same posture as the operators ApplicationSet.
+  # This Application is applied by hand exactly once; from then on
+  # it reconciles clusters/hub/ from Git.
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
