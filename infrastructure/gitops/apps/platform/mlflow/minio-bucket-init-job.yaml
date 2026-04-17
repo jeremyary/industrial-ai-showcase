@@ -4,7 +4,10 @@ metadata:
   name: mlflow-bucket-init
   namespace: mlflow
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    # PostSync hook: tracked during sync, deleted on success. Avoids
+    # ongoing OutOfSync drift once ttlSecondsAfterFinished expires.
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   backoffLimit: 10
   ttlSecondsAfterFinished: 600
