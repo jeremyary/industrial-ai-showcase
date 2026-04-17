@@ -152,6 +152,7 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
   - ADR-022 (CoO UIPlugin over standalone Grafana, retrospective from Session 07) and ADR-023 (Vault + VSO).
 - **Sigstore deferred out of Phase 0**: The `policy-controller-operator` v1.0.0 from redhat-operators ships CRDs whose conversion-webhook `clientConfig` references a `webhook` service the operator never creates, plus a cert SAN mismatch. OCP 4.21 **already has** Sigstore admission via the platform `config.openshift.io/v1 ClusterImagePolicy` API (the preloaded `openshift` CIP enforces OCP release signatures through it) — a completely separate stack from the `policy.sigstore.dev/v1beta1` CRDs the operator would add. Platform CIPs have **no warn mode** — they're enforce-only, so shipping one scoped to our registry without real signing material would block Phase 1 image pulls the instant Phase 1 began. Correct move: **introduce `config.openshift.io/v1 ClusterImagePolicy` alongside the first signed image in Phase 1**, with keys sourced from Vault (now available post-Session-08b).
 - **Scope-split decision**: the Phase-0-shortcut cleanup (placeholder Secrets → VaultStaticSecrets, MLflow CA trust fix) moves to Session 08b because Vault requires a manual init/unseal step that isn't automatable by an ApplicationSet sync. Session 08 lands the infrastructure; 08b runs after the user initializes Vault.
+- **Session 08c (doc-only)**: After 08b migrated the S3/MinIO/Loki Secrets to Vault, two MLflow-specific shortcuts remained — `redhat-ods-applications/mlflow-db-app` is a manual cross-namespace mirror of a CNPG-generated Secret, and the Postgres URI carries `?sslmode=disable` to skip verification of CNPG's self-signed CA. Both are accepted as Phase-0 concessions (intra-cluster traffic is mesh-mTLS-protected) and documented in `infrastructure/gitops/apps/platform/mlflow/README.md`. Full fix (CNPG `managed.roles` + CA-bundle ConfigMap + `sslmode=verify-full`) lands in Phase 1+ alongside the first workload that genuinely demands end-to-end TLS.
 - **Depends on**: Session 02 (GitOps), Session 04b (Argo CD cluster-admin RBAC).
 - **OSD vs companion**: hub. Companion security (STIG, FIPS, Sigstore **enforce** mode) is Session 11.
 - **GPU workload?**: No.
@@ -253,7 +254,8 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 | 06 | RHOAI DSC validation + GPU smoke tests + MLflow backend | 03 | hub | L40S + L4 | 1 (done) |
 | 07 | Observability baseline (Loki + UIPlugins + GPU rules; Tempo/OTel deferred) | 03 | hub | — | 1 (done) |
 | 08 | Hub security baseline: Vault + VSO + policy-controller + templates | 03 | hub | — | 1 (done) |
-| 08b | Vault init/unseal + migrate Phase-0 placeholder Secrets to VSO + MLflow CA trust fix | 08 | hub | — | 1 |
+| 08b | Vault init/unseal + migrate Phase-0 placeholder Secrets to VSO | 08 | hub | — | 1 (done) |
+| 08c | MLflow DB cross-namespace mirror + `sslmode=disable` accepted as Phase-0 concessions; doc-only | 08b | hub | — | 0.25 (done) |
 | 09 | Companion provisioning (OD-8 + install) | (parallel with 02) | companion | — | 2 |
 | 10 | Companion baseline capture | 09 | companion | — | 1 |
 | 11 | Companion security (STIG, FIPS, Sigstore enforce) | 10 | companion | — | 1–2 |
