@@ -37,32 +37,41 @@ This is a Red Hat policy requirement (see "Guidelines on Use of AI Generated Con
 ### Commit Trailers
 When committing code that was written or substantially shaped by an AI tool, include a trailer in the commit message using ONE of these choices:
 
-- `Co-Authored by: Claude Code` — for commits where AI assisted but a human drove the design and logic
-- `Generated-by: Claude Code` — for commits where the code is substantially AI-generated
+- `Co-Authored-by: Claude` — for commits where AI assisted but a human drove the design and logic
+- `Generated-by: Claude` — for commits where the code is substantially AI-generated
 
 These trailers go in the footer section of the commit message, after the body.
 
-### Pull Request Descriptions
-When a PR contains substantial AI-generated code, note this in the PR description, include a trailer in the PR description:
+**Do not include model names or version identifiers in the trailer.** `Co-Authored-by: Claude` is the authorised form; no `[Opus 4.x]`, no `Claude Code`, no model suffixes. This keeps attribution stable across model upgrades and avoids the impression that a specific model release is being endorsed.
 
-- `Co-Authored by: Claude [model_name_here, e.g. Opus 4.6]`
+### Pull Request Descriptions
+When a PR contains substantial AI-generated code, note this in the PR description. Include the same trailer in the PR description footer:
+
+- `Co-Authored-by: Claude`
+
+Same rule as commits: no model name.
 
 ### README
 
-What a project contains substantial AI-generate code, include a note in the README following the title & summary description like this:
+When a project contains substantial AI-generated code, include a note in the README following the title and summary description like this:
 
 > [!NOTE]
 > This project was developed with assistance from AI tools.
 
 ## Copyright and Licensing
 
-- **Never** generate LICENSE files, license headers, or license declarations (e.g., in pyproject.toml, package.json). AI-generated code has unresolved copyright status — licensing decisions must be made by humans with Legal guidance, not by AI tools.
-- **Never** mention or reference a license in README files or documentation.
-- Do not instruct AI to reproduce copyrighted code verbatim
-- Verify that generated code does not closely match existing copyrighted implementations — if output looks suspiciously specific or familiar, investigate its origin
-- All dependencies must use Red Hat-approved licenses (reference the [Fedora Allowed Licenses](https://docs.fedoraproject.org/en-US/legal/allowed-licenses/) list)
-- When in doubt about license compatibility, check with Legal before proceeding
-- Do not use AI to generate code that incorporates or derives from code with incompatible licenses
+AI-generated content has unresolved copyright status. Our collaboration (human + AI) cannot issue a license on content whose copyright status we do not control. This is not a stylistic preference — it is a legal constraint.
+
+- **Never** generate, draft, or request a `LICENSE` file in any form.
+- **Never** add license headers to source files.
+- **Never** add license declarations to project metadata (`pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod` headers, chart metadata, container labels, etc.).
+- **Never** recommend or template a license choice, even "just as a placeholder."
+- **Never** mention or reference a license in README files, documentation, contribution guides, or PR descriptions.
+- If a scaffolding template, linter, or tool complains about a missing license, leave it unsatisfied and flag the gap as a human-to-resolve TODO. Do **not** satisfy the tool by inventing a license.
+- Licensing decisions must be made by humans with Red Hat Legal guidance. That is not an AI task, and no AI commit or PR should include license material of any kind.
+- Verify that generated code does not closely match existing copyrighted implementations — if output looks suspiciously specific or familiar, investigate its origin.
+- Do not use AI to generate code that incorporates or derives from code with incompatible licenses.
+- All dependencies must use Red Hat-approved licenses (reference the [Fedora Allowed Licenses](https://docs.fedoraproject.org/en-US/legal/allowed-licenses/) list). Dependency license vetting is a human review item.
 
 ## Upstream Contribution Policy
 
