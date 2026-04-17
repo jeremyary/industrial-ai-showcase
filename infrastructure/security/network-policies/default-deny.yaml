@@ -1,0 +1,16 @@
+# Default-deny template. Workload namespaces import this via Kustomize
+# (e.g. `../../security/network-policies/default-deny.yaml`) and pair it
+# with an allowlist manifest in their own directory that permits only the
+# traffic they actually need.
+#
+# Applies to: any Pod in the namespace this is applied to.
+# Posture: deny all ingress + all egress by default.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

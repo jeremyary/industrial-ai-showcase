@@ -400,6 +400,46 @@ The `minio-object-store-operator` (MinIO AIStor) from the certified catalog was 
 
 ---
 
+## ADR-022: Cluster Observability Operator UIPlugin over standalone Grafana for Phase 0
+
+**Status**: Accepted (Session 07)
+
+**Context**: Phase 0 Session 07 needed a dashboard surface for cluster / DCGM / class-allocation panels. Options: (a) upstream Grafana Operator (Community Operators only — no Red Hat support); (b) standalone Grafana via Helm (more infrastructure; another Route to manage); (c) Cluster Observability Operator's `UIPlugin` mechanism, which embeds Red Hat-supported dashboards directly into the OpenShift Console's Observe view.
+
+**Decision**: Use CoO `UIPlugin` for Phase 0. `UIPlugin/logging` + `UIPlugin/monitoring` land under `infrastructure/gitops/apps/observability/ui-plugins/`. No standalone Grafana instance.
+
+**Consequences**:
+- Zero extra operator overhead for Phase 0 dashboards; everything is in-Console.
+- Loses a dedicated Grafana URL — the Showcase Console (Phase 1+) eventually needs an embeddable dashboard URL, which will revisit this decision. Likely answer: add a standalone Grafana instance specifically for sales-view dashboards at that point, so we have one.
+- CoO also ships Perses (CNCF dashboard engine) as a secondary path; not used in Phase 0 but available if Perses becomes relevant.
+
+---
+
+## ADR-023: Vault + Vault Secrets Operator as the Phase 0 secrets substrate
+
+**Status**: Accepted (Session 08)
+
+**Context**: Phase 0 sessions 06, 06b, and 07 all shipped placeholder credentials committed to Git (MinIO root creds for `mlflow`, MinIO root creds for `obs-storage`, MLflow S3 credentials, Loki S3 credentials, and an imperative cross-namespace mirror for `mlflow-db-app`). This is a conscious shortcut — not acceptable as a production pattern. We need a real secrets substrate before Phase 1 workloads ship.
+
+Options evaluated:
+- **HashiCorp Vault + Vault Secrets Operator (VSO)** — certified in `certified-operators` (`vault-secrets-operator.v1.3.0`). HashiCorp's official K8s client; designed for this use case.
+- **External Secrets Operator (ESO)** — community-operators only (`v0.11.0`, alpha channel). Cross-provider but unsupported.
+- **Sealed Secrets** — fine for the "commit an encrypted Secret" case; doesn't help sync from an external source.
+- **OpenShift Secrets Store CSI Driver** — mounts secrets at pod startup, no Secret CR projection; doesn't fit downstream consumers that expect `envFrom: secretRef`.
+
+**Decision**: Deploy HashiCorp Vault in-cluster (bare StatefulSet, single replica, file-backed storage, manual init/unseal) and Vault Secrets Operator (VSO) from the certified catalog. VSO's `VaultConnection` + `VaultAuth` + `VaultStaticSecret` CRs read KV secrets from Vault and project them as Kubernetes Secrets into tenant namespaces.
+
+Session 08 lands the infrastructure + the warn-mode Sigstore policy + the NetworkPolicy templates. **Session 08b (next) executes the placeholder-to-Vault migration** after the operator initializes Vault (init/unseal is manual-only for Phase 0; production customers plug in their own Vault or use KMS-backed auto-unseal).
+
+**Consequences**:
+- The Phase 0 placeholder pattern is explicitly time-boxed — every committed placeholder gets a `TODO(ADR-023)` note pointing here.
+- Single-replica file-backed Vault is for reference only. Customer deployments substitute their own Vault (HA Raft + KMS-unseal, or an existing enterprise instance).
+- VSO's Kubernetes auth method is the canonical auth path — ServiceAccount tokens prove identity, no static credentials needed.
+- One operational gotcha carries forward: pod restart re-seals Vault. Documented in `infrastructure/gitops/apps/platform/vault/README.md`.
+- Cross-cluster Vault (companion + hub sharing a single Vault) deferred — each cluster runs its own Vault substrate unless a customer specifies otherwise.
+
+---
+
 These are decisions we're aware of but not yet making — they're documented in `09-risks-and-open-questions.md` rather than being forced here.
 
 - Physical hardware: do we buy a Unitree G1 for Phase 4 hardware integration?

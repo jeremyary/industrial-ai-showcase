@@ -7,3 +7,4 @@ resources:
   - appsets/operators.yaml
   - appsets/platform.yaml
   - appsets/observability.yaml
+  - appsets/security.yaml
