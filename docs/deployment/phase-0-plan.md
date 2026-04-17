@@ -144,19 +144,18 @@ Every session is: **one feature branch, one PR, DCO-signed, `Co-Authored-by: Cla
 
 ### Session 08 — Hub security baseline
 
-- **Landed** (new `security` ApplicationSet layer):
+- **Landed**:
   - `apps/operators/vault-secrets/` — HashiCorp Vault Secrets Operator (certified, `stable` channel).
-  - `apps/operators/policy-controller/` — Red Hat `policy-controller-operator` v1.0.0 (stable-v1.0).
-  - `apps/platform/vault/` — single-replica, file-backed Vault StatefulSet + Service + K8s auth SA + runbook README.
-  - `apps/security/policy-controller/` — `ClusterImagePolicy/warn-project-images` scoped to future `quay.io/redhat-physical-ai-reference/**` images; `mode: warn`.
+  - `apps/platform/vault/` — single-replica, file-backed Vault StatefulSet + Service + K8s auth SA + runbook README (image pinned `docker.io/hashicorp/vault:1.18.4`; `quay.io/hashicorp/vault` is 401).
   - `infrastructure/security/network-policies/` — `default-deny-all` + companion allowlists (argocd-sync, platform-monitoring, dns-egress) that workloads import via Kustomize.
   - `infrastructure/security/scc/README.md` — scaffold pattern; no custom SCCs yet.
-  - ADR-023 accepting the Vault + VSO path.
+  - ADR-022 (CoO UIPlugin over standalone Grafana, retrospective from Session 07) and ADR-023 (Vault + VSO).
+- **Sigstore deferred out of Phase 0**: The `policy-controller-operator` v1.0.0 from redhat-operators ships CRDs whose conversion-webhook `clientConfig` references a `webhook` service the operator never creates, plus a cert SAN mismatch. OCP 4.21 **already has** Sigstore admission via the platform `config.openshift.io/v1 ClusterImagePolicy` API (the preloaded `openshift` CIP enforces OCP release signatures through it) — a completely separate stack from the `policy.sigstore.dev/v1beta1` CRDs the operator would add. Platform CIPs have **no warn mode** — they're enforce-only, so shipping one scoped to our registry without real signing material would block Phase 1 image pulls the instant Phase 1 began. Correct move: **introduce `config.openshift.io/v1 ClusterImagePolicy` alongside the first signed image in Phase 1**, with keys sourced from Vault (now available post-Session-08b).
 - **Scope-split decision**: the Phase-0-shortcut cleanup (placeholder Secrets → VaultStaticSecrets, MLflow CA trust fix) moves to Session 08b because Vault requires a manual init/unseal step that isn't automatable by an ApplicationSet sync. Session 08 lands the infrastructure; 08b runs after the user initializes Vault.
 - **Depends on**: Session 02 (GitOps), Session 04b (Argo CD cluster-admin RBAC).
 - **OSD vs companion**: hub. Companion security (STIG, FIPS, Sigstore **enforce** mode) is Session 11.
 - **GPU workload?**: No.
-- **Estimated sessions**: 1 (slightly tight; split if Vault in-cluster is chosen).
+- **Estimated sessions**: 1 (done, with 08b follow-up for credential migration).
 
 ### Session 09 — Companion cluster provisioning (OD-8 resolution + install)
 

@@ -19,7 +19,7 @@ spec:
       serviceAccountName: vault
       containers:
         - name: vault
-          image: quay.io/hashicorp/vault:1.18
+          image: docker.io/hashicorp/vault:1.18.4
           command: ["vault"]
           args: ["server", "-config=/vault/config/vault.hcl"]
           ports:
