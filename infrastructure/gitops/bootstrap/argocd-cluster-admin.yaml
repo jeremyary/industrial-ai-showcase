@@ -1,0 +1,23 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openshift-gitops-argocd-cluster-admin
+  annotations:
+    # The default openshift-gitops application-controller ClusterRole
+    # has broad but not-cluster-admin permissions; new operator CRDs
+    # (e.g., sailoperator.io/*) aren't covered until you add them.
+    # Binding cluster-admin here matches this cluster's posture (ADR-017
+    # notes it's cluster-admin-held throughout) and unblocks every
+    # future operator CRD without per-CRD RBAC additions.
+    #
+    # Customer deployments that want tighter scoping should replace this
+    # with per-API-group ClusterRoles - tracked as a future ADR.
+    rbac.authorization.k8s.io/owner: manual-bootstrap
+subjects:
+  - kind: ServiceAccount
+    name: openshift-gitops-argocd-application-controller
+    namespace: openshift-gitops
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
