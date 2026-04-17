@@ -1,0 +1,20 @@
+apiVersion: operator.open-cluster-management.io/v1
+kind: MultiClusterHub
+metadata:
+  name: multiclusterhub
+  namespace: open-cluster-management
+  annotations:
+    # ACM operator installs the MultiClusterHub CRD on first Subscription
+    # sync; this CR has to wait for that. Sync-wave 1 runs after the
+    # wave-0 Subscription. SkipDryRunOnMissingResource lets the first
+    # attempt survive a not-yet-registered CRD; Argo CD's automatic
+    # retry picks it up once OLM finishes.
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # Don't register the hub as its own managed cluster (D5). Avoids
+  # circular management of hub Applications through ACM and keeps
+  # the hub-as-Argo-CD-source-of-truth model clean.
+  disableHubSelfManagement: true
+  # No Observability subsystem this session (D6). MultiClusterObservability
+  # is a separate CR; we skip it and revisit in Session 14 (Thanos federation).
