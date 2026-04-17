@@ -379,6 +379,25 @@ ADR-006 is superseded. All prior references to "Service Mesh v2" in the project 
 
 ---
 
+## ADR-021: MinIO operator for in-cluster S3 on OSD hub; ODF not installed here
+
+**Status**: Accepted (first use: Session 03)
+
+**Context**: Phase 1+ workloads need an S3-compatible object store — MLflow artifacts (ADR-015 called for "S3-compatible artifact store (ODF or OSD-equivalent)"), USD asset staging for Nucleus-adjacent services, future object consumers. The OSD hub runs on AWS Nitro instances with only AWS EBS-backed StorageClasses (`gp2`, `gp3`); no S3 endpoint exists in-cluster. Session 03 baseline confirmed no ODF / NooBaa / RGW / Ceph CRDs are present.
+
+Installing ODF on cloud-managed OSD duplicates EBS block storage behind a Ceph layer whose storage substrate (local disks) doesn't match Nitro cleanly. ADR-015 already hedged "ODF or OSD-equivalent"; this ADR picks the OSD-equivalent.
+
+**Decision**: Install the MinIO operator (`minio-object-store-operator`, Certified catalog) on the OSD hub. MinIO tenants provide S3-compatible object storage backed by PVCs on the existing `gp3` StorageClass. **ODF is not installed on the hub.** The companion cluster revisits ODF in Session 12 if it lands on multi-node bare metal where Ceph's storage model fits.
+
+**Consequences**:
+- MLflow artifact store (ADR-015) is a MinIO tenant bucket. No change to the `workloads/common/python-lib/tracking/` abstraction.
+- USD asset bucket for Nucleus-adjacent services is a MinIO tenant. Keeps the `ovstorage` migration story (ADR-002) on the table — MinIO buckets are swappable for `ovstorage` without code change.
+- Backup/DR for object content is PVC-level (EBS snapshots). Acceptable for a reference deployment; production customers bring their own backup story.
+- Air-gap: MinIO tenant images mirror cleanly; compatible with customer sites where AWS S3 is unavailable.
+- The companion cluster decision (ODF vs MinIO) is deferred to Session 12 and depends on companion hardware topology.
+
+---
+
 These are decisions we're aware of but not yet making — they're documented in `09-risks-and-open-questions.md` rather than being forced here.
 
 - Physical hardware: do we buy a Unitree G1 for Phase 4 hardware integration?
