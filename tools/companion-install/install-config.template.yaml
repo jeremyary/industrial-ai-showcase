@@ -7,6 +7,16 @@ apiVersion: v1
 baseDomain: lab.local
 metadata:
   name: companion
+# FIPS is a day-1-only decision. The cluster comes up genuinely FIPS-mode
+# (fips=1 on the RHCOS kernel cmdline, FIPS-validated crypto providers in
+# the payload). Per ADR-017 the companion is where the FIPS story lives.
+#
+# The Fedora 43 install host is not itself in FIPS mode, so the static
+# openshift-install binary's host-crypt check is bypassed at render time
+# via OPENSHIFT_INSTALL_SKIP_HOSTCRYPT_VALIDATION=1 (see ../README.md).
+# The cluster will carry install.openshift.io/hostcrypt-check-bypassed=true
+# — material for a formal audit, immaterial for demonstrating posture.
+fips: true
 controlPlane:
   name: master
   replicas: 1
