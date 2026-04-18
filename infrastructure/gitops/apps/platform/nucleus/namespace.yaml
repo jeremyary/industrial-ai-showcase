@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: omniverse-nucleus
+  labels:
+    # NVIDIA Nucleus images run as root (per /root/eula.sh entrypoint). The
+    # restricted SCC would block that; we grant anyuid to the dedicated
+    # `nucleus` ServiceAccount below rather than raising the namespace's PSA
+    # level globally. The labels here stay at restricted for everything else.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    openshift.io/cluster-monitoring: "true"

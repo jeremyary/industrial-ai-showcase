@@ -1,0 +1,14 @@
+---
+# Source: omniverse-nucleus/templates/saml-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nucleus-saml
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+data:
+  federation.meta.blank.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata">
+    </md:EntityDescriptor>
