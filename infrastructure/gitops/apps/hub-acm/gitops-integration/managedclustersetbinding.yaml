@@ -1,0 +1,9 @@
+apiVersion: cluster.open-cluster-management.io/v1beta2
+kind: ManagedClusterSetBinding
+metadata:
+  name: clusters-companion
+  namespace: openshift-gitops
+# Binds the clusters-companion ClusterSet into the openshift-gitops
+# namespace so Placement objects here can select its members.
+spec:
+  clusterSet: clusters-companion

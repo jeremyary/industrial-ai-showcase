@@ -1,0 +1,12 @@
+apiVersion: cluster.open-cluster-management.io/v1beta2
+kind: ManagedClusterSet
+metadata:
+  name: clusters-companion
+# Role-based ClusterSet containing the self-managed companion SNO
+# (and, future, any similar on-prem/edge clusters). Kept separate from
+# the ACM-default `global` / `default` sets so RBAC + Placement
+# generators can target companion-class clusters distinctly from the
+# hub. See Session 13 design notes in the PR description.
+spec:
+  clusterSelector:
+    selectorType: ExclusiveClusterSetLabel

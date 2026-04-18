@@ -1,0 +1,24 @@
+apiVersion: agent.open-cluster-management.io/v1
+kind: KlusterletAddonConfig
+metadata:
+  name: companion
+  namespace: companion
+# Which ACM addons to install into the companion spoke on join.
+# Minimal set for Phase 0 — policy-controller, search, and work-manager
+# are the ones we care about. Observability stays off until Session 14
+# wires Thanos federation explicitly.
+spec:
+  clusterName: companion
+  clusterNamespace: companion
+  # applicationManager is required even when we're using Argo CD (not
+  # ACM's native Application mechanism) because GitOpsCluster's legacy
+  # Argo-integration code path consumes the <cluster>-application-
+  # manager-cluster-secret this addon creates.
+  applicationManager:
+    enabled: true
+  certPolicyController:
+    enabled: true
+  policyController:
+    enabled: true
+  searchCollector:
+    enabled: true
