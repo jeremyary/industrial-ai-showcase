@@ -4,6 +4,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: nucleus-data
+  namespace: omniverse-nucleus
   labels:
     app.kubernetes.io/part-of: omniverse-nucleus
     app.kubernetes.io/version: "2023.2.9"

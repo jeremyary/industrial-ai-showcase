@@ -4,6 +4,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: nucleus-navigator
+  namespace: omniverse-nucleus
   labels:
     app.kubernetes.io/part-of: omniverse-nucleus
     app.kubernetes.io/version: "2023.2.9"
@@ -22,6 +23,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: nucleus-api
+  namespace: omniverse-nucleus
   labels:
     app.kubernetes.io/part-of: omniverse-nucleus
     app.kubernetes.io/version: "2023.2.9"
@@ -41,6 +43,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: nucleus-discovery
+  namespace: omniverse-nucleus
   labels:
     app.kubernetes.io/part-of: omniverse-nucleus
     app.kubernetes.io/version: "2023.2.9"
@@ -60,6 +63,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: nucleus-auth
+  namespace: omniverse-nucleus
   labels:
     app.kubernetes.io/part-of: omniverse-nucleus
     app.kubernetes.io/version: "2023.2.9"
@@ -79,6 +83,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: nucleus-auth-login
+  namespace: omniverse-nucleus
   labels:
     app.kubernetes.io/part-of: omniverse-nucleus
     app.kubernetes.io/version: "2023.2.9"
@@ -98,6 +103,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: nucleus-search
+  namespace: omniverse-nucleus
   labels:
     app.kubernetes.io/part-of: omniverse-nucleus
     app.kubernetes.io/version: "2023.2.9"
@@ -117,6 +123,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: nucleus-tagging
+  namespace: omniverse-nucleus
   labels:
     app.kubernetes.io/part-of: omniverse-nucleus
     app.kubernetes.io/version: "2023.2.9"
@@ -136,6 +143,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: nucleus-lft
+  namespace: omniverse-nucleus
   labels:
     app.kubernetes.io/part-of: omniverse-nucleus
     app.kubernetes.io/version: "2023.2.9"
