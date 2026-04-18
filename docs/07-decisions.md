@@ -448,6 +448,52 @@ Session 08 lands the infrastructure + the warn-mode Sigstore policy + the Networ
 
 ---
 
+## ADR-024: Nucleus deployed as native Kubernetes workloads, not the NVIDIA-sanctioned Compose stack
+
+**Status**: Accepted
+
+**Context**: Nucleus is NVIDIA's Omniverse USD asset server and is a Phase-1 foundation dependency (Isaac Sim, Kit App Streaming, USD Search, and downstream agents all reach it via `omniverse://` URLs). NVIDIA ships Nucleus as a Docker Compose stack from `nvcr.io/nvidia/omniverse/nucleus-*`. The Enterprise Nucleus planning guide is explicit:
+
+> Compose files are designed for Docker Compose environments only and are not compatible with Swarms.
+
+Every NVIDIA K8s reference deployment that touches Nucleus (DSX Blueprint, OV Portal on DGX Cloud AKS, USD Search, Kit App Streaming, VSS) treats Nucleus as an **external FQDN** reached via `omniverse://`. NVIDIA does not publish a Helm chart, operator, or Kubernetes manifest set for Nucleus itself.
+
+This leaves two realistic deployment paths on our Phase-1 reference:
+
+- **Path A (NVIDIA-sanctioned)**: run Enterprise Nucleus in a KubeVirt VM on the companion cluster, expose via FQDN, all hub workloads consume the URL. Matches the OV Portal DGX Cloud pattern exactly. Zero off-spec risk.
+- **Path B (Red Hat-differentiated)**: package the same `nvcr.io/nvidia/omniverse` container images as individual K8s Deployments on the hub, managed by Argo CD, mesh-enrolled, Sigstore-verified, observability-federated. Off-spec per NVIDIA; Red Hat owns the operational surface.
+
+Red Hat's RHEcosystemAppEng team produced a proof-of-concept Helm chart for Path B (`github.com/RHEcosystemAppEng/nvidia-omniverse-nucleus/tree/main/deploy-native`). It is a PoC, not a product: it pins to 2023.2.7, omits two services from the 2023.2.9 stack (`ingress-router` and `auth-router-gateway`), uses imperative secret generation, and lacks Service Mesh / NetworkPolicy / Vault integration.
+
+**Decision**: Adopt **Path B**. Phase 1 delivers a forked, completed Helm chart under `infrastructure/gitops/apps/platform/nucleus/`, reconciled by Argo CD, that runs NVIDIA's Nucleus 2023.2.9 container set as native Kubernetes workloads on the hub.
+
+We accept that we own every consequence of diverging from NVIDIA's sanctioned packaging. We judge the differentiation worth it: K8s-native Nucleus is an operational surface NVIDIA itself does not provide, and is a concrete substantiation of the charter's differentiator #8 ("Day-2 lifecycle done right — operators for every component, GitOps-driven updates, rolling patches without stopping production") that Path A cannot match.
+
+**Consequences**:
+
+- **Off NVIDIA spec, permanently**. Red Hat owns the repair path for any Nucleus-internal behavior that changes between Compose releases. NVIDIA support will decline K8s-specific issues.
+- **Version-drift maintenance is a running cost.** Every NVIDIA Nucleus patch means reading the Compose-file diff and mirroring changes (new env vars, new services, new args) into our chart. Acceptable because the release cadence is slow (2023.2.x has shipped 9 patches over 18 months) and the chart is small (~15 manifests).
+- **Storage constraint is real and unfixed.** NVIDIA explicitly forbids NFS/SMB/iSCSI for Nucleus because of fsync semantics; customer-reproducible patterns are therefore RWO block + all pods co-located on one node via subPath mounts. This is a single-point-of-failure at the node level, it limits cross-node scaling, and it is the pattern we ship. We flag this in the chart README and the Session 16 baseline so reviewers understand the compromise.
+- **Two services missing from the PoC chart (`ingress-router:1.1.4`, `auth-router-gateway:1.4.7`) are added in Session 16 Part C** by reverse-engineering NVIDIA's PB 25h1 Compose manifest (NGC resource `nvidia/omniverse/nucleus-compose-stack-pb25h1`). Without them the auth flow in 2023.2.9 is incomplete.
+- **Companion's KubeVirt still has a VM demo story to own** (Phase 4+ legacy-MES emulation, Unitree G1 sim, VDI/Kit workstations). ADR-017's "companion hosts VMs" posture is unchanged; ADR-024 just chooses that Nucleus is not one of those VMs.
+- **Imperative deploy script (`deploy.sh`) is discarded.** Argo reconciles. Every secret is VSS-sourced from Vault. Every manifest is kustomize-wrapped. GitOps is the authoritative state.
+- **Showcase narrative gets strengthened.** An evaluator asking "why not just run the Compose stack on a VM?" gets a concrete answer: "because K8s-native is observable, mesh-protected, Sigstore-verified, and rolling-updatable per service — Red Hat built what NVIDIA didn't."
+- **We will record any post-install operational friction** in an ongoing `infrastructure/gitops/apps/platform/nucleus/KNOWN-ISSUES.md` so the cost of Path B is visible, not hidden.
+
+**Supersedes / interacts with**:
+
+- Phase 1 work-item 1 in `docs/04-phased-plan.md` ("Nucleus validation and codification") — text said "existing Nucleus deployment"; there is none, so Session 16 is greenfield. No migration needed.
+- ADR-017 (OSD hub + companion) — unchanged. Companion still hosts VMs (Phase 4 workloads), just not Nucleus.
+- Session 16 is split into five PRs (A–E): ADR + NGC doc (this); chart foundation; router-gateway fill-in; security hardening; Service Mesh enrollment.
+
+**Open items tracked separately** in `09-risks-and-open-questions.md`:
+
+- Getting the PB 25h1 Compose manifest from NGC (requires authenticated pull; cross-check our 12-service tag set).
+- Kit × Nucleus × Isaac Sim 6.0 compatibility matrix (unpublished; rep-ask).
+- `ovstorage` GA timeline (H2 2026 targeted) and whether USD Search / Kit App Streaming adopt it as a backend (could supersede this ADR in Phase 3+).
+
+---
+
 These are decisions we're aware of but not yet making — they're documented in `09-risks-and-open-questions.md` rather than being forced here.
 
 - Physical hardware: do we buy a Unitree G1 for Phase 4 hardware integration?
