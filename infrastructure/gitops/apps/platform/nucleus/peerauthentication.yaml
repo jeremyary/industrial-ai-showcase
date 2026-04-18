@@ -1,0 +1,17 @@
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: omniverse-nucleus
+# PERMISSIVE allows both mTLS and plaintext callers:
+#   * Nucleus services reach each other through their sidecars → mTLS
+#     automatically (both ends have istio-proxy).
+#   * OpenShift Router (openshift-ingress namespace, not in mesh)
+#     continues to reach Nucleus Routes over plaintext so external access
+#     keeps working without refactoring to an Istio Ingress Gateway.
+# STRICT requires all callers to be in the mesh; moving to STRICT is a
+# Phase-2+ item once we run an Ingress Gateway and decide the router
+# strategy cluster-wide.
+spec:
+  mtls:
+    mode: PERMISSIVE

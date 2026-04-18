@@ -31,11 +31,8 @@ Migrated to `VaultStaticSecret` reading `kv/nucleus/crypto`. JWT keypairs, disco
 ### 6. Probes — **closed in Part D (TCP-socket probes)**
 10 of 12 services have TCP-socket readiness + liveness probes on their primary port. `log-processor` and `thumbnails` are internal workers with no listening port — K8s restarts them on process exit, no probe target exists. Nucleus services' endpoints speak WebSocket (return HTTP 426 on plain GET), so TCP-socket probes are the uniform option; HTTP probes would false-fail. Probe timing: readiness 20s/10s/3s, liveness 60s/20s/5s, failureThreshold 3.
 
-### 7. No Service Mesh enrollment
-- **What**: Nucleus services communicate in plaintext inside the cluster.
-- **Why**: Part E scope.
-- **Fix**: Part E adds ServiceMeshMember + PeerAuthentication STRICT.
-- **Risk until closed**: east-west traffic within `omniverse-nucleus` namespace is unencrypted. Lab acceptable.
+### 7. Service Mesh — **closed in Part E (PERMISSIVE mode)**
+Namespace joined the `default` Istio revision via the `istio.io/rev: default` label. Intra-mesh pod-to-pod calls get mTLS automatically (both sides have istio-proxy sidecars). PeerAuthentication is **PERMISSIVE** rather than STRICT so OpenShift Router can continue reaching Nucleus Routes over plaintext without refactoring to an Istio Ingress Gateway — STRICT is a Phase-2+ item tied to cluster-wide router strategy. `ngc-pullsecret-render` Job opts out of injection (Jobs with sidecars never Complete).
 
 ### 8. NetworkPolicies — **closed in Part D**
 `networkpolicy.yaml` ships four policies: `default-deny-ingress` (no pod reachable until explicitly allowed), `allow-intra-namespace` (Nucleus services reach each other via Discovery), `allow-openshift-ingress` (Routes work), `allow-openshift-monitoring` (Prometheus/MCO scrape). Egress stays default-allow for Phase 1 (image pulls, NGC auth, kube-dns, Vault); Phase 2+ can tighten.
