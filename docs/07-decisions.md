@@ -285,6 +285,14 @@ Everything else — Nucleus, Isaac Sim, GR00T serving, Cosmos NIMs, VSS, fleet m
 
 **Supersedes**: earlier drafts of this ADR that characterized OSD as heavily restricted and framed the companion as a forced workaround. Those assumptions were based on a dedicated-admin access model that doesn't apply here.
 
+**Amendment (Session 09, 2026-04-17) — companion FIPS install-time caveat**:
+
+The companion runs RHCOS with day-1 FIPS (`fips: true`, `fips=1` on kernel cmdline, FIPS-validated crypto providers in the payload). The *install host* — Fedora 43 on the GMKTec Evo-X2 — cannot itself run in FIPS mode with sanctioned tooling: Fedora 42+ removed `fips-mode-setup`, and the FIPS-capable `openshift-install` variant (`openshift-install-fips` from the `openshift-install-rhel9` tarball) requires a RHEL host, not Fedora. The static `openshift-install` binary we use therefore fails its host-crypt check with `fips: Forbidden: ... use the FIPS-capable installer binary for RHEL 9 on a host with FIPS enabled`.
+
+We bypass this check at render time with `OPENSHIFT_INSTALL_SKIP_HOSTCRYPT_VALIDATION=1`. The installer logs the violation as a warning and sets `install.openshift.io/hostcrypt-check-bypassed=true` on the cluster. This means ignition-bootstrap key material was generated on a non-FIPS host — immaterial for demonstrating FIPS posture (the running cluster is genuinely FIPS-enabled and Compliance Operator will score it accordingly), but material for a real CNSA audit of the install chain.
+
+Session 11 records the bypass annotation and FIPS evidence side-by-side so a viewer can see both the posture and its caveat. Session 10's baseline capture records the annotation explicitly. A future rebuild of the companion host on RHEL 9 + proper FIPS installer variant would close this gap; that work is not on the Phase-0 critical path.
+
 ---
 
 ## ADR-018: GPU class targeting via GFD-provided `nvidia.com/gpu.product` labels
