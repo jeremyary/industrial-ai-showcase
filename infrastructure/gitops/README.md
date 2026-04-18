@@ -63,4 +63,4 @@ Spoke clusters (`clusters/spoke-a/`, `clusters/spoke-b/`) appear in Phase 2 per 
 - `docs/04-phased-plan.md` — Phase 0 scope and exit criteria.
 - `docs/06-repo-structure.md` — canonical directory layout.
 - `docs/07-decisions.md` — ADR-020 (Service Mesh 3) is the first post-Session-01 ADR that landed via this process.
-- `docs/deployment/phase-0-plan.md` — session-by-session backlog.
+- `docs/plans/phase-0-plan.md` — session-by-session backlog.
