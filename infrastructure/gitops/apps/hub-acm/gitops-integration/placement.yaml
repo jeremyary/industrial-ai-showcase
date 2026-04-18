@@ -1,0 +1,11 @@
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Placement
+metadata:
+  name: all-companion
+  namespace: openshift-gitops
+# Selects every cluster in the clusters-companion set. Used by
+# GitOpsCluster to maintain Argo CD cluster secrets and by the
+# companion ApplicationSet to resolve destinations.
+spec:
+  clusterSets:
+    - clusters-companion

@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: companion-apps
+  namespace: openshift-gitops
+spec:
+  # Matrix generator: one Application per (companion-cluster × directory
+  # under apps/companion/). Since there is only one companion cluster
+  # for now, this expands to N Applications where N = count of
+  # subdirectories under infrastructure/gitops/apps/companion/.
+  generators:
+    - matrix:
+        generators:
+          - clusterDecisionResource:
+              configMapRef: acm-placement
+              labelSelector:
+                matchLabels:
+                  cluster.open-cluster-management.io/placement: all-companion
+              requeueAfterSeconds: 60
+          - git:
+              repoURL: https://github.com/jeremyary/industrial-ai-showcase.git
+              revision: main
+              directories:
+                - path: infrastructure/gitops/apps/companion/*
+  template:
+    metadata:
+      name: 'companion-{{path.basename}}'
+      labels:
+        phase: phase-0
+        layer: companion
+        target-cluster: '{{name}}'
+      annotations:
+        # Server-side diff avoids spurious drift from fields the API
+        # server auto-populates that aren't in our manifests.
+        argocd.argoproj.io/compare-options: ServerSideDiff=true
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/jeremyary/industrial-ai-showcase.git
+        targetRevision: main
+        path: '{{path}}'
+      destination:
+        # The clusterDecisionResource generator provides {{server}} for
+        # each selected managed cluster — Argo CD then routes the
+        # Application to that cluster's managed-cluster Secret.
+        server: '{{server}}'
+        namespace: openshift-gitops
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

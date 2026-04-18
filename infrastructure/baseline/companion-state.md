@@ -207,9 +207,21 @@ Single-node topology is the biggest operational difference. Every MachineConfig 
 
 ---
 
-## 16. Known follow-ups (Session 13+)
+## 17. ACM registration + cross-cluster GitOps
 
-- **Register companion to hub ACM** as a spoke via pull-model klusterlet — no hub→companion inbound connectivity needed (Session 13).
+Registered to the hub's ACM in Session 13 (2026-04-18):
+
+- `ManagedCluster/companion` `HUB ACCEPTED=true JOINED=True AVAILABLE=True`
+- In `ManagedClusterSet: clusters-companion` (role-based set, distinct from ACM defaults)
+- Addons active: `application-manager`, `cert-policy-controller`, `cluster-proxy`, `config-policy-controller`, `governance-policy-framework`, `klusterlet-addon-search`, `klusterlet-addon-workmgr`, `managed-serviceaccount`
+- Hub Argo CD reconciles all 7 `apps/companion/*` directories via ApplicationSet `companion-apps` in `openshift-gitops` on hub
+- Argo destination uses ACM's cluster-proxy: `https://cluster-proxy-addon-user.multicluster-engine.svc.cluster.local:9092/companion`. No hub→companion direct connectivity needed (pull-model klusterlet + cluster-proxy).
+- Klusterlet import was manual one-time — hub on OSD/AWS cannot push to 10.0.0.80 on local LAN. See `infrastructure/gitops/apps/hub-acm/README.md`.
+
+---
+
+## 18. Known follow-ups (Session 14+)
+
 - **Join companion to Thanos federation** for hub's unified metrics view (Session 14).
 - **Phase-0 exit review** + sales-enablement one-pager (Session 15).
 - Consider rebuilding host on RHEL 9 + FIPS-capable installer to drop the `hostcrypt-check-bypassed` caveat — Phase-1+ optional, not on critical path.

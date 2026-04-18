@@ -1,0 +1,18 @@
+apiVersion: cluster.open-cluster-management.io/v1
+kind: ManagedCluster
+metadata:
+  name: companion
+  labels:
+    # Assignment to our role-based ClusterSet (see ../clusterset/).
+    cluster.open-cluster-management.io/clusterset: clusters-companion
+    # Descriptive labels used by Placement selectors in Argo CD
+    # ApplicationSets.
+    role: companion
+    environment: lab
+    vendor: OpenShift
+  annotations:
+    # Request auto-approval of the klusterlet's CSRs on join.
+    open-cluster-management.io/created-via: other
+spec:
+  hubAcceptsClient: true
+  leaseDurationSeconds: 60

@@ -1,0 +1,17 @@
+apiVersion: apps.open-cluster-management.io/v1beta1
+kind: GitOpsCluster
+metadata:
+  name: companion-gitops
+  namespace: openshift-gitops
+# Tells ACM to maintain Argo CD cluster Secrets (in openshift-gitops)
+# for every cluster selected by the referenced Placement. The Argo CD
+# instance then sees each selected cluster as a reachable destination
+# — no manual `argocd cluster add` step required.
+spec:
+  argoServer:
+    cluster: local-cluster
+    argoNamespace: openshift-gitops
+  placementRef:
+    kind: Placement
+    apiVersion: cluster.open-cluster-management.io/v1beta1
+    name: all-companion
