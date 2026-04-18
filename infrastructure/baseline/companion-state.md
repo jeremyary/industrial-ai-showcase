@@ -89,11 +89,13 @@ This is recorded explicitly so Session 12 (KubeVirt) does not attempt GPU passth
 
 ## 8. OpenShift Virtualization (KubeVirt)
 
-Not installed in Phase 0. PackageManifest availability and nested-virt kernel-capability captured for Session 12 readiness:
+Installed in Session 12 (2026-04-18). The companion is the designated KubeVirt cluster per ADR-017; hub does not run VM workloads.
 
-- `kubevirt-hyperconverged` PackageManifest: **available**, catalog=`redhat-operators`, defaultChannel=`stable`
-- Installed CSV: **none** (no kubevirt install yet)
-- Nested virt on node: **`svm` present** (AMD SVM exposed — confirmed via `oc debug node` + `/proc/cpuinfo`). Session 12 can proceed.
+- CSV: `kubevirt-hyperconverged-operator.v4.21.3` (stable channel, redhat-operators catalog)
+- `HyperConverged` CR: `openshift-cnv/kubevirt-hyperconverged` with default spec
+- Nested virt on node: **`svm` present** (AMD SVM — confirmed pre-install).
+- CDI uses default StorageClass (`lvms-vg1`) for DataVolumes.
+- No vGPU (no NVIDIA GPU on this host — vGPU path is ORIGIN-PC-conditional per ADR-017).
 
 ---
 
@@ -121,12 +123,15 @@ The cluster is genuinely FIPS-enabled at the kernel + crypto-provider level. The
 
 ## 10. Installed operators
 
-Fresh OCP 4.21.5 — only platform-default operators:
+| Operator | CSV | Namespace | Session | Purpose |
+|---|---|---|---|---|
+| LVM Storage (LVMS) | `lvms-operator.v4.21.0` | `openshift-storage` | 11 | SNO local-storage provisioner. Backs `lvms-vg1` StorageClass from `/dev/vdb` (100 GB qcow2). |
+| Compliance Operator | `compliance-operator.v1.9.0` | `openshift-compliance` | 11 | STIG V2R3 scans + remediations. 105 auto-remediations applied; scan-only policy. |
+| OpenShift Virtualization (KubeVirt) | `kubevirt-hyperconverged-operator.v4.21.3` | `openshift-cnv` | 12 | HyperConverged CR deploys virt-api, virt-controller, virt-handler, CDI, SSP, cluster-network-addons. |
 
-- **Subscriptions**: none.
-- **CSVs**: `packageserver` (Succeeded) in `openshift-operator-lifecycle-manager`. No others.
+Platform defaults (always present): `packageserver` in `openshift-operator-lifecycle-manager`.
 
-Session 11 will add Compliance Operator; Session 12 adds KubeVirt; Session 13 adds ACM klusterlet (pull-model).
+Session 13 will add ACM klusterlet (pull-model).
 
 ---
 
@@ -156,22 +161,11 @@ Confirms outbound connectivity to `registry.redhat.io` / `quay.io` — the compa
 
 ## 13. StorageClasses
 
-**None.** `oc get storageclass` returns `No resources found`.
+| Name | Provisioner | Default | Session | Backing |
+|---|---|---|---|---|
+| `lvms-vg1` | `topolvm.io` | yes | 11 | LVMCluster `companion-storage` on `/dev/vdb` (100 GB qcow2, thin-provisioned, xfs, overprovision ratio 10). |
 
-**This is a Phase-0 gap.** SNO installs without a default dynamic provisioner. Consequences:
-
-- Any `PersistentVolumeClaim` will stay `Pending` indefinitely.
-- Compliance Operator's `rawResultStorage` PVC (Session 11) will not bind.
-- Monitoring stack PVCs (Prometheus retention, Alertmanager) are currently running on `emptyDir` — acceptable for a showcase, lost on pod restart.
-- KubeVirt (Session 12) needs a storage backend for VM disks.
-
-Session 11 must install a storage provisioner before it can use persistent `rawResultStorage`. Candidates:
-
-1. **`lvms-operator`** (LVM Storage Operator) — Red Hat-shipped, purpose-built for SNO, ships LVMCluster CRD that provisions a `lvms-vg1` StorageClass on local block devices. Lightweight. Preferred.
-2. **`local-storage-operator` + static PVs** — lower-level, more manual.
-3. **`odf-operator`** — too heavy for a 1-node SNO; not recommended here.
-
-Action item: Session 11 opens with `lvms-operator` install, then Compliance Operator, then STIG ScanSettingBinding. Alternative: use `emptyDir: {}` for `rawResultStorage` (acceptable for a demo where ARF XML doesn't need to persist across pod restarts).
+The 100 GB backing qcow2 was live-attached to the VM via `virsh attach-disk --persistent --live` in Session 11 (no VM downtime). Compliance Operator's `rawResultStorage` and KubeVirt CDI DataVolumes both use this default SC.
 
 ---
 
@@ -206,20 +200,18 @@ Compared to `osd-hub-state.md`:
 | FIPS | not enabled | **enabled day-1** (with hostcrypt bypass caveat) |
 | Platform | AWS/OSD | `None` (bare-metal / agent) |
 | Ingress cert / DNS | OSD-managed cluster domain | self-signed, `/etc/hosts` override for `*.lab.local` |
-| StorageClasses | ODF + AWS gp3 | **none** — see §13 |
-| Operator Subscriptions | many (RHOAI, CNPG, AMQ Streams, Vault, GPU Operator, NFD, Mesh, etc.) | none |
+| StorageClasses | ODF + AWS gp3 | `lvms-vg1` (LVMS) |
+| Operator Subscriptions | many (RHOAI, CNPG, AMQ Streams, Vault, GPU Operator, NFD, Mesh, etc.) | LVMS, Compliance, KubeVirt |
 
-Single-node topology is the biggest operational difference. Every MachineConfig change (FIPS, STIG node remediations, LVM install) reboots the only node — there is no rolling drain. Session 11 must plan reboots explicitly.
+Single-node topology is the biggest operational difference. Every MachineConfig change reboots the only node — there is no rolling drain. Session 11's 105-remediation batch absorbed this as a single reboot.
 
 ---
 
-## 16. Known follow-ups (Session 11+)
+## 16. Known follow-ups (Session 13+)
 
-- **Install storage provisioner** (LVMS) — prerequisite for Compliance Operator PVC (Session 11).
-- Install Compliance Operator, bind `ocp4-stig`, `ocp4-stig-node`, `rhcos4-stig` profiles with `autoApplyRemediations: false` (Session 11 — see `.plans/session-11-research.md`).
-- Author tight `ClusterImagePolicy` (Red Hat registry enforce) for companion (Session 11). Defer GHCR CIP to Phase 1 when showcase images start being built.
-- Document `hostcrypt-check-bypassed` disposition in README + risk register (Session 11).
-- Consider rebuilding host on RHEL 9 + FIPS-capable installer to drop the hostcrypt-bypass caveat — Phase-1+ optional, not on critical path.
-- Install OpenShift Virtualization + validate nested-virt VM for vGPU Kit workstation story (Session 12). Nested `svm` already confirmed present here.
-- Register companion to hub ACM as a spoke via pull-model klusterlet (Session 13).
-- Join companion to Thanos federation for hub's unified metrics view (Session 14).
+- **Register companion to hub ACM** as a spoke via pull-model klusterlet — no hub→companion inbound connectivity needed (Session 13).
+- **Join companion to Thanos federation** for hub's unified metrics view (Session 14).
+- **Phase-0 exit review** + sales-enablement one-pager (Session 15).
+- Consider rebuilding host on RHEL 9 + FIPS-capable installer to drop the `hostcrypt-check-bypassed` caveat — Phase-1+ optional, not on critical path.
+- Phase-1: widen `ClusterImagePolicy` scope — `registry.redhat.io` (GPG signing chain) and showcase GHCR (Fulcio/Rekor identity) once signing material is locked.
+- Phase-1: wire an IdP, then remove kubeadmin, then apply the 13 deferred STIG remediations that depend on IdP / cluster-logging / registry allowlist.

@@ -1,0 +1,9 @@
+apiVersion: hco.kubevirt.io/v1beta1
+kind: HyperConverged
+metadata:
+  name: kubevirt-hyperconverged
+  namespace: openshift-cnv
+# Phase-0 defaults. HCO auto-scales replicas down for single-node OpenShift
+# and wires CDI to the cluster's default StorageClass (lvms-vg1 on this
+# companion — see infrastructure/gitops/apps/companion/lvmcluster/).
+spec: {}
