@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+# Enables user-workload Prometheus on the companion so workload
+# metrics (not just platform metrics) are scraped and made available
+# to ACM's metrics-collector for remote_write to hub Thanos. The
+# Prometheus operator stack for user workloads lands in the
+# openshift-user-workload-monitoring namespace automatically.
+data:
+  config.yaml: |
+    enableUserWorkload: true
