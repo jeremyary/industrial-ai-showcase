@@ -12,6 +12,9 @@ metadata:
     haproxy.router.openshift.io/timeout: 3600s
 spec:
   host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   port:
     targetPort: web
   to:
@@ -31,6 +34,9 @@ metadata:
     haproxy.router.openshift.io/timeout: 86400s
 spec:
   host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   path: /omni/api
   port:
     targetPort: api
@@ -51,6 +57,9 @@ metadata:
     haproxy.router.openshift.io/timeout: 3600s
 spec:
   host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   path: /omni/discovery
   port:
     targetPort: discovery
@@ -71,6 +80,9 @@ metadata:
     haproxy.router.openshift.io/timeout: 3600s
 spec:
   host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   path: /omni/auth
   port:
     targetPort: auth
@@ -91,6 +103,9 @@ metadata:
     haproxy.router.openshift.io/rewrite-target: /
 spec:
   host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   path: /omni/auth-login
   port:
     targetPort: auth-login
@@ -111,6 +126,9 @@ metadata:
     haproxy.router.openshift.io/timeout: 3600s
 spec:
   host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   path: /omni/search
   port:
     targetPort: search
@@ -131,6 +149,9 @@ metadata:
     haproxy.router.openshift.io/timeout: 3600s
 spec:
   host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   path: /omni/tagging
   port:
     targetPort: tagging
@@ -152,6 +173,9 @@ metadata:
     haproxy.router.openshift.io/rewrite-target: /
 spec:
   host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   path: /omni/lft
   port:
     targetPort: lft
