@@ -128,10 +128,12 @@ The cluster is genuinely FIPS-enabled at the kernel + crypto-provider level. The
 | LVM Storage (LVMS) | `lvms-operator.v4.21.0` | `openshift-storage` | 11 | SNO local-storage provisioner. Backs `lvms-vg1` StorageClass from `/dev/vdb` (100 GB qcow2). |
 | Compliance Operator | `compliance-operator.v1.9.0` | `openshift-compliance` | 11 | STIG V2R3 scans + remediations. 105 auto-remediations applied; scan-only policy. |
 | OpenShift Virtualization (KubeVirt) | `kubevirt-hyperconverged-operator.v4.21.3` | `openshift-cnv` | 12 | HyperConverged CR deploys virt-api, virt-controller, virt-handler, CDI, SSP, cluster-network-addons. |
+| Klusterlet (ACM agent) | installed via import.yaml | `open-cluster-management-agent`, `-addon`, `-policies` | 13 | Pull-model registration to hub ACM. Addons: application-manager, cert-policy-controller, cluster-proxy, config-policy, governance-policy-framework, managed-serviceaccount, search, workmgr. |
+| Observability-controller addon | `observability-controller` | `open-cluster-management-addon-observability` | 14 | Auto-deployed by ACM MCO on hub. Runs `metrics-collector` + `uwl-metrics-collector` which remote_write platform + user-workload metrics to hub Thanos Receiver. |
 
 Platform defaults (always present): `packageserver` in `openshift-operator-lifecycle-manager`.
 
-Session 13 will add ACM klusterlet (pull-model).
+User-workload monitoring was enabled in Session 14 via `cluster-monitoring-config` ConfigMap in `openshift-monitoring` (see `infrastructure/gitops/apps/companion/user-workload-monitoring/`).
 
 ---
 
@@ -220,10 +222,19 @@ Registered to the hub's ACM in Session 13 (2026-04-18):
 
 ---
 
-## 18. Known follow-ups (Session 14+)
+## 19. Observability federation
 
-- **Join companion to Thanos federation** for hub's unified metrics view (Session 14).
-- **Phase-0 exit review** + sales-enablement one-pager (Session 15).
+Registered into hub ACM MCO in Session 14:
+
+- `metrics-collector` + `uwl-metrics-collector` remote_write platform + workload metrics to hub Thanos Receiver via cluster-proxy.
+- 95 `up` series from companion visible in hub Thanos. Grafana on hub dashboards render per-cluster views with a `cluster` selector.
+- Long-term retention: `thanos` bucket on the hub's obs-storage MinIO. 30d raw / 60d 5m / 90d 1h per MCO CR.
+
+---
+
+## 20. Known follow-ups (Phase 1+)
+
 - Consider rebuilding host on RHEL 9 + FIPS-capable installer to drop the `hostcrypt-check-bypassed` caveat — Phase-1+ optional, not on critical path.
-- Phase-1: widen `ClusterImagePolicy` scope — `registry.redhat.io` (GPG signing chain) and showcase GHCR (Fulcio/Rekor identity) once signing material is locked.
-- Phase-1: wire an IdP, then remove kubeadmin, then apply the 13 deferred STIG remediations that depend on IdP / cluster-logging / registry allowlist.
+- Widen `ClusterImagePolicy` scope: `registry.redhat.io` (GPG signing chain) and showcase GHCR (Fulcio/Rekor identity) once signing material is locked.
+- Wire an IdP, then remove kubeadmin, then apply the 13 deferred STIG remediations that depend on IdP / cluster-logging / registry allowlist.
+- Migrate the two imperative secrets (`thanos-object-storage`, `multiclusterhub-operator-pull-secret`) to VaultStaticSecret pattern like other Phase-0 secrets.
