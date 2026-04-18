@@ -14,7 +14,12 @@ metadata:
     pod-security.kubernetes.io/audit: privileged
     pod-security.kubernetes.io/warn: privileged
     openshift.io/cluster-monitoring: "true"
-    # Service Mesh 3 sidecar injection — joins the `default` Istio revision
-    # in istio-system. Pods get an istio-proxy sidecar on next restart and
-    # pick up mTLS (intra-mesh pairs) + observability.
-    istio.io/rev: default
+    # Service Mesh 3 sidecar injection — DISABLED pending hub-wide CA drift fix.
+    # The `default` revision's istio-ca-secret (signing cert) rotated but
+    # istio-ca-root-cert ConfigMaps cluster-wide were not re-propagated. Proxies
+    # can't verify istiod's certs. This is a pre-existing hub issue that
+    # affects every mesh-enrolled namespace, not a Nucleus-specific problem.
+    # Re-enable by setting: istio.io/rev: default  once the hub mesh CA is
+    # reconciled (either by regenerating istio-ca-root-cert from the current
+    # istio-ca-secret or by forcing istiod to re-bootstrap). See the
+    # PeerAuthentication manifest + Part-E commit — the code remains correct.
