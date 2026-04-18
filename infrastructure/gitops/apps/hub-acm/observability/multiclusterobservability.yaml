@@ -1,0 +1,122 @@
+apiVersion: observability.open-cluster-management.io/v1beta2
+kind: MultiClusterObservability
+metadata:
+  name: observability
+# ACM MultiClusterObservability — deploys Thanos (Receiver, Querier,
+# Store, Compactor, Ruler) + Grafana on the hub and auto-deploys
+# metrics-collector on every managed cluster. Managed clusters
+# remote_write their platform metrics to the hub Thanos Receiver.
+# Long-term metrics go into the thanos bucket on the in-cluster MinIO
+# in obs-storage (pre-created in Session 14).
+spec:
+  # Retention: 30d hot in Thanos ingesters, 90d in the object store.
+  # Reasonable for a showcase; bump up once we're generating more
+  # traffic for compliance/audit evidence.
+  retentionConfig:
+    retentionResolutionRaw: 30d
+    retentionResolution5m: 60d
+    retentionResolution1h: 90d
+    retentionInLocal: 1d
+  storageConfig:
+    metricObjectStorage:
+      name: thanos-object-storage
+      key: thanos.yaml
+    # Phase-0 PVC sizes tuned for a lab — enough to show the pattern
+    # without consuming OSD's block-storage budget unnecessarily.
+    storageClass: gp3-csi
+    alertmanagerStorageSize: 1Gi
+    rulesStorageSize: 1Gi
+    compactStorageSize: 5Gi
+    receiveStorageSize: 5Gi
+    ruleStorageSize: 1Gi
+    storeStorageSize: 5Gi
+  # Enable the advanced observability with Grafana + dashboards.
+  enableDownsampling: true
+  observabilityAddonSpec:
+    enableMetrics: true
+    interval: 30
+    resources:
+      limits:
+        cpu: 200m
+        memory: 700Mi
+      requests:
+        cpu: 10m
+        memory: 100Mi
+  # Phase-0 sizing — this OSD hub is CPU-constrained (shared lab
+  # cluster). Override MCO's default multi-replica HA sizing to a
+  # single replica per service. Hub-local reliability is not the
+  # showcase point; multi-cluster metric federation is.
+  advanced:
+    retentionConfig:
+      deleteDelay: 24h
+    receive:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 256Mi
+    query:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+    queryFrontend:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+    queryFrontendMemcached:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+    rule:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+    store:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 256Mi
+    storeMemcached:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+    compact:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+    observatoriumAPI:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+    rbacQueryProxy:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+    grafana:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+    alertmanager:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
