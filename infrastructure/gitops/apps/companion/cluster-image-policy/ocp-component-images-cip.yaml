@@ -1,0 +1,30 @@
+apiVersion: config.openshift.io/v1
+kind: ClusterImagePolicy
+metadata:
+  name: companion-ocp-component-images
+# Adds enforce-mode signature verification for the OCP component images
+# scope (quay.io/openshift-release-dev/ocp-v4.0-art-dev). The
+# platform-shipped `openshift` ClusterImagePolicy only covers
+# quay.io/openshift-release-dev/ocp-release (the release manifest);
+# individual component images live at -art-dev and are signed with the
+# same Red Hat release-signing key. This adds real enforcement for
+# operator operand images that CVO pulls out of the release payload.
+#
+# registry.redhat.io product images use a different (GPG) signing
+# chain and are deferred to Phase 1 once signing identity and Vault
+# key material are locked per ADR-016 / ADR-023.
+spec:
+  scopes:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev
+  policy:
+    rootOfTrust:
+      policyType: PublicKey
+      publicKey:
+        # Identical to the platform `openshift` CIP — the Red Hat
+        # release-signing public key. Embedded inline so this manifest
+        # is self-contained; any future rotation of the Red Hat key
+        # would land in both the platform CIP (by payload update) and
+        # here (by editing this file).
+        keyData: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQ0lqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FnOEFNSUlDQ2dLQ0FnRUEwQVN5dUgyVExXdkJVcVBIWjRJcAo3NWc3RW5jQmtnUUhkSm5qenhBVzVLUVRNaC9zaUJvQi9Cb1NydGlQTXduQ2hiVENuUU9JUWVadURpRm5odUo3Ck0vRDNiN0pvWDBtMTIzTmNDU242N21BZGpCYTZCZzZrdWtaZ0NQNFpVWmVFU2FqV1gvRWp5bEZjUkZPWFc1N3AKUkRDRU40MkovallsVnF0K2c5K0dya2VyOFN6ODZIM2wwdGJxT2RqYnovVnhIWWh3RjBjdFVNSHN5VlJEcTJRUAp0cXpOWGxtbE1oUy9Qb0ZyNlI0dS83SENuL0srTGVnY08yZkFGT2I0MEt2S1NLS1ZENmxld1VaRXJob3AxQ2dKClhqRHRHbW1POWRHTUY3MW1mNkhFZmFLU2R5K0VFNmlTRjJBMlZ2OVFoQmF3TWlxMmtPekVpTGc0bkFkSlQ4d2cKWnJNQW1QQ3FHSXNYTkdaNC9RK1lUd3dsY2UzZ2xxYjVMOXRmTm96RWRTUjlOODVERVNmUUxRRWRZM0NhbHdLTQpCVDFPRWhFWDF3SFJDVTRkck1PZWo2Qk5XMFZ0c2NHdEhtQ3JzNzRqUGV6aHdOVDh5cGt5UytUMHpUNFRzeTZmClZYa0o4WVNIeWVuU3pNQjJPcDJidnNFM2dyWStzNzRXaEc5VUlBNkRCeGNUaWUxNU5Tekt3Znphb05XT0RjTEYKcDdCWThhYUhFMk1xRnhZRlgrSWJqcGtRUmZhZVFRc291REZkQ2tYRUZWZlBwYkQyZGs2RmxlYU1UUHV5eHRJVApnalZFdEdRSzJxR0NGR2lRSEZkNGhmVitlQ0E2M0pybzF6MHpvQk01QmJJSVEzK2VWRnd0M0FsWnA1VVZ3cjZkCnNlY3FraS95cm12M1kwZHFaOVZPbjNVQ0F3RUFBUT09Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQ==
+    signedIdentity:
+      matchPolicy: MatchRepoDigestOrExact

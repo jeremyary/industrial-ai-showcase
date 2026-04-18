@@ -1,0 +1,22 @@
+apiVersion: compliance.openshift.io/v1alpha1
+kind: ScanSetting
+metadata:
+  name: companion-stig-scan-only
+  namespace: openshift-compliance
+# Scan-only posture for SNO. Any node remediation reboots the only node,
+# so autoApplyRemediations=false is mandatory. Remediations are applied
+# one-at-a-time or as a reviewed batch under human supervision.
+autoApplyRemediations: false
+autoUpdateRemediations: false
+schedule: "0 6 * * *"
+roles:
+  - master
+strictNodeScan: true
+rawResultStorage:
+  rotation: 10
+  size: 2Gi
+  storageClassName: lvms-vg1
+scanTolerations:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+    operator: Exists
