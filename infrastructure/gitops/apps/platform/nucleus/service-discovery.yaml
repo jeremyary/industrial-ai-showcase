@@ -81,6 +81,20 @@ spec:
               memory: 128Mi
           ports:
             - containerPort: 3333
+          readinessProbe:
+            tcpSocket:
+              port: 3333
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 3333
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
           volumeMounts:
             - name: crypto-secrets
               mountPath: /omni/secrets/SERVICE_TOKEN

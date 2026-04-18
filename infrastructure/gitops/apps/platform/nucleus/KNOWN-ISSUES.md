@@ -28,11 +28,8 @@ Migrated to `VaultStaticSecret` reading `kv/nucleus/crypto`. JWT keypairs, disco
 - **Fix**: Structural — not solvable without NVIDIA changing their position on network filesystems or us swapping to `ovstorage` (Phase 3+ when that's GA).
 - **Risk until closed**: node failure takes Nucleus down for the duration of pod rescheduling + re-mount. Accept for Phase-1. A customer deployment would use multi-replica Nucleus Enterprise on separate nodes with external load-balancing — outside our SNO/lab setup.
 
-### 6. No probes / health checks
-- **What**: Neither the PoC chart nor the upstream Compose stack ship liveness/readiness probes for Nucleus services.
-- **Why**: NVIDIA doesn't publish recommended probe endpoints.
-- **Fix**: Part D adds probes based on observed TCP-accept + HTTP response patterns. May need to research per-service which endpoint is a useful liveness signal.
-- **Risk until closed**: a deadlocked service doesn't get restarted by K8s; requires operator to notice.
+### 6. Probes — **closed in Part D (TCP-socket probes)**
+10 of 12 services have TCP-socket readiness + liveness probes on their primary port. `log-processor` and `thumbnails` are internal workers with no listening port — K8s restarts them on process exit, no probe target exists. Nucleus services' endpoints speak WebSocket (return HTTP 426 on plain GET), so TCP-socket probes are the uniform option; HTTP probes would false-fail. Probe timing: readiness 20s/10s/3s, liveness 60s/20s/5s, failureThreshold 3.
 
 ### 7. No Service Mesh enrollment
 - **What**: Nucleus services communicate in plaintext inside the cluster.
@@ -40,8 +37,7 @@ Migrated to `VaultStaticSecret` reading `kv/nucleus/crypto`. JWT keypairs, disco
 - **Fix**: Part E adds ServiceMeshMember + PeerAuthentication STRICT.
 - **Risk until closed**: east-west traffic within `omniverse-nucleus` namespace is unencrypted. Lab acceptable.
 
-### 8. No NetworkPolicies
-- **What**: Default-allow within the namespace, and default-allow cross-namespace ingress to Nucleus services.
-- **Why**: Part D scope.
-- **Fix**: Part D adds default-deny baseline + explicit allowlists for `openshift-ingress`, other consumer namespaces (Kit, Isaac Sim, USD Search, VSS, GR00T).
-- **Risk until closed**: over-broad network reachability in a namespace holding an asset-serving identity substrate. Lab acceptable.
+### 8. NetworkPolicies — **closed in Part D**
+`networkpolicy.yaml` ships four policies: `default-deny-ingress` (no pod reachable until explicitly allowed), `allow-intra-namespace` (Nucleus services reach each other via Discovery), `allow-openshift-ingress` (Routes work), `allow-openshift-monitoring` (Prometheus/MCO scrape). Egress stays default-allow for Phase 1 (image pulls, NGC auth, kube-dns, Vault); Phase 2+ can tighten.
+
+When Phase-1 consumer namespaces land (USD Search, Kit, Isaac Sim, VSS, GR00T), each gets its own `allow-from-<consumer>` Policy naming the source namespace via `namespaceSelector`. Extending this file is the pattern.

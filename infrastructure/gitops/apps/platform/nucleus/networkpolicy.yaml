@@ -1,0 +1,68 @@
+---
+# Default-deny ingress: no pod reachable until an explicit allowlist Policy
+# names it. Egress stays default-allow for Phase 1 (image pulls, NGC,
+# kube-dns, Vault, other internal services). Phase 2+ can tighten egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: omniverse-nucleus
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress: []
+---
+# Allow Nucleus pods to talk to each other freely. The 12 services mesh
+# internally via Discovery; they all share the `app.kubernetes.io/part-of:
+# omniverse-nucleus` label, or we can allow everything in-namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: omniverse-nucleus
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+---
+# Allow ingress from OpenShift Router (which serves the Routes) to pods
+# backing those Routes. The default OpenShift router runs in
+# `openshift-ingress` namespace. All Nucleus services that have a Route
+# are reachable externally via this.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-openshift-ingress
+  namespace: omniverse-nucleus
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+---
+# Allow Prometheus scrape from OpenShift monitoring (platform) and from
+# the user-workload-monitoring namespace. Needed for metrics-collector,
+# PodMonitor, and the MCO observability-addon scraping Nucleus on port
+# 3010 (monpx metrics).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-openshift-monitoring
+  namespace: omniverse-nucleus
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: monitoring

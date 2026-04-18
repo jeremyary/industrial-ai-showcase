@@ -55,6 +55,20 @@ spec:
               memory: 256Mi
           ports:
             - containerPort: 8891
+          readinessProbe:
+            tcpSocket:
+              port: 8891
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 8891
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
           volumeMounts:
             - name: data
               mountPath: /omni/data

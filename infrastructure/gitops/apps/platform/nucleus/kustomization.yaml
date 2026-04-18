@@ -34,3 +34,5 @@ resources:
   - service-thumbnails.yaml
   # Ingress
   - routes.yaml
+  # NetworkPolicy (default-deny + explicit allowlists)
+  - networkpolicy.yaml
