@@ -16,11 +16,11 @@ Running log of Path B (ADR-024) operational costs. Each item should either close
 - **Fix**: Part D replaces with VSS from `kv/nucleus/crypto`, and documents a one-time operator seed step for initial keypair generation.
 - **Risk until closed**: cluster-rebuild invalidates existing tokens — every Kit app, Isaac Sim instance, and agent with a long-lived Nucleus token must re-auth. Low risk in Phase-0/Phase-1 lab, real risk in production.
 
-### 3. Two services absent — `ingress-router`, `auth-router-gateway`
-- **What**: NVIDIA's PB 25h1 Compose manifest includes `nvcr.io/nvidia/omniverse/ingress-router:1.1.4` and `nvcr.io/nvidia/omniverse/auth-router-gateway:1.4.7` that the upstream PoC chart did not include. Our fork inherits the gap.
-- **Why**: PoC-chart origin.
-- **Fix**: Part C reverse-engineers the Compose wiring for these two services and adds K8s Deployments, reworks Routes to go through `ingress-router`.
-- **Risk until closed**: certain auth flows (expected by newer Kit apps) may return 404/401. Phase-1 demo path likely works; production flows might not.
+### 3. Two services from PB 25h1 Compose intentionally not reproduced — `ingress-router`, `auth-router-gateway`
+- **What**: NVIDIA's PB 25h1 Compose includes `ingress-router:1.1.4` and `auth-router-gateway:1.4.7`.
+- **Why not shipped**: Research established both are architecturally redundant on OpenShift. `ingress-router` is NGINX path-based reverse proxy — OpenShift Routes (`routes.yaml`) cover this exactly. `auth-router-gateway` is a renamed SSO Gateway for SAML IdP federation; NVIDIA docs confirm Nucleus runs with local username/password auth (our Phase-1 config) without it. Kit / Isaac / other `omniverse://` clients authenticate directly against `auth-service` and never touch the gateway unless SAML is wired up.
+- **Not a gap.** Closed, not deferred.
+- **If SSO is ever needed (Phase 3+)**: federate via Red Hat build of Keycloak → Nucleus OIDC (`USE_OPENID_SSO` in `configmap.yaml`, currently off). Do NOT hand-roll SAML.
 
 ### 4. Cluster-apps-domain hardcoded
 - **What**: `configmap.yaml` and `routes.yaml` have `nucleus.apps.<specific-OSD-cluster-domain>` baked in.
