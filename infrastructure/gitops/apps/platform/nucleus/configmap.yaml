@@ -1,0 +1,31 @@
+---
+# Source: omniverse-nucleus/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nucleus-config
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+data:
+  SERVER_IP_OR_HOST: "nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com"
+  INSTANCE_NAME: "my_omniverse"
+  ACCEPT_EULA: "1"
+  SECURITY_REVIEWED: "1"
+  ENABLE_VERSIONING: "1"
+  ENABLE_STRUCTURED_LOGGING: "0"
+  LFT_COMPRESSION: "0"
+  CREDENTIAL_UI_VISIBLE: "true"
+  USE_SAML_SSO: "0"
+  USE_OPENID_SSO: "0"
+  USE_OPENID_SERVICE_ACCOUNTS: "0"
+  REFERENCE_CONTENT_MOUNT_ENABLE: "1"
+  REFERENCE_CONTENT_MOUNT_TARGET: "/NVIDIA"
+  REFERENCE_CONTENT_SOURCE: "content-production.omniverse.nvidia.com"
+  REFERENCE_CONTENT_SECURE: "1"
+  REFERENCE_CONTENT_USE_CREDENTIALS: "0"
+  REFERENCE_CONTENT_BUCKET: ""
+  REFERENCE_CONTENT_SOURCE_REGION: ""
+  REFERENCE_CONTENT_BUCKET_ACCESS_KEY_ID: ""
+  REFERENCE_CONTENT_BUCKET_SECRET_ACCESS_KEY: ""
+  REFERENCE_CONTENT_NON_COMPLIANT_XML_SCHEMA: "0"

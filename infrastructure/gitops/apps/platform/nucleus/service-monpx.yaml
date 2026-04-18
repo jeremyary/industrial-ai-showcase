@@ -1,0 +1,69 @@
+---
+# Source: omniverse-nucleus/templates/services/monpx.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nucleus-monpx
+  labels:
+    app: nucleus-monpx
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+spec:
+  selector:
+    app: nucleus-monpx
+  ports:
+    - name: metrics
+      port: 3010
+      targetPort: 8080
+---
+# Source: omniverse-nucleus/templates/services/monpx.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nucleus-monpx
+  labels:
+    app: nucleus-monpx
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nucleus-monpx
+  template:
+    metadata:
+      labels:
+        app: nucleus-monpx
+    spec:
+      serviceAccountName: nucleus
+      imagePullSecrets:
+        - name: ngc-pull-secret
+      containers:
+        - name: nucleus-monpx
+          image: nvcr.io/nvidia/omniverse/utl-monpx:1.14.53
+          env:
+            - name: ACCEPT_EULA
+              value: "1"
+            - name: OMNI_MONPX_SCRAPE_URLS
+              value: "http://nucleus-api:9500/metrics;http://nucleus-api:3010/metrics;http://nucleus-log-processor:9500/metrics"
+            - name: OMNI_MONPX_ALLOWED_METRIC_PREFIXES
+              value: "omni:nginx:redis:exposer:otcollector:otelcol"
+            - name: OMNI_DS_BLACKLIST_PATH
+              value: /omni/data/PathBlackList.json
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /omni/data
+              subPath: data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: nucleus-data

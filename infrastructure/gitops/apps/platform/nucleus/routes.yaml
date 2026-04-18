@@ -1,0 +1,152 @@
+---
+# Source: omniverse-nucleus/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nucleus-navigator
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+  annotations:
+    haproxy.router.openshift.io/timeout: 3600s
+spec:
+  host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  port:
+    targetPort: web
+  to:
+    kind: Service
+    name: nucleus-navigator
+---
+# Source: omniverse-nucleus/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nucleus-api
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+  annotations:
+    haproxy.router.openshift.io/timeout: 86400s
+spec:
+  host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  path: /omni/api
+  port:
+    targetPort: api
+  to:
+    kind: Service
+    name: nucleus-api
+---
+# Source: omniverse-nucleus/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nucleus-discovery
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+  annotations:
+    haproxy.router.openshift.io/timeout: 3600s
+spec:
+  host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  path: /omni/discovery
+  port:
+    targetPort: discovery
+  to:
+    kind: Service
+    name: nucleus-discovery
+---
+# Source: omniverse-nucleus/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nucleus-auth
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+  annotations:
+    haproxy.router.openshift.io/timeout: 3600s
+spec:
+  host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  path: /omni/auth
+  port:
+    targetPort: auth
+  to:
+    kind: Service
+    name: nucleus-auth
+---
+# Source: omniverse-nucleus/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nucleus-auth-login
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+  annotations:
+    haproxy.router.openshift.io/rewrite-target: /
+spec:
+  host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  path: /omni/auth-login
+  port:
+    targetPort: auth-login
+  to:
+    kind: Service
+    name: nucleus-auth
+---
+# Source: omniverse-nucleus/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nucleus-search
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+  annotations:
+    haproxy.router.openshift.io/timeout: 3600s
+spec:
+  host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  path: /omni/search
+  port:
+    targetPort: search
+  to:
+    kind: Service
+    name: nucleus-search
+---
+# Source: omniverse-nucleus/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nucleus-tagging
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+  annotations:
+    haproxy.router.openshift.io/timeout: 3600s
+spec:
+  host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  path: /omni/tagging
+  port:
+    targetPort: tagging
+  to:
+    kind: Service
+    name: nucleus-tagging
+---
+# Source: omniverse-nucleus/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nucleus-lft
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+  annotations:
+    haproxy.router.openshift.io/timeout: 86400s
+    haproxy.router.openshift.io/rewrite-target: /
+spec:
+  host: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+  path: /omni/lft
+  port:
+    targetPort: lft
+  to:
+    kind: Service
+    name: nucleus-lft-lb

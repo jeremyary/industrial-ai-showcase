@@ -1,0 +1,74 @@
+---
+# Source: omniverse-nucleus/templates/services/navigator.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nucleus-navigator
+  labels:
+    app: nucleus-navigator
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+spec:
+  selector:
+    app: nucleus-navigator
+  ports:
+    - name: web
+      port: 8080
+      targetPort: 80
+---
+# Source: omniverse-nucleus/templates/services/navigator.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nucleus-navigator
+  labels:
+    app: nucleus-navigator
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nucleus-navigator
+  template:
+    metadata:
+      labels:
+        app: nucleus-navigator
+    spec:
+      serviceAccountName: nucleus
+      imagePullSecrets:
+        - name: ngc-pull-secret
+      containers:
+        - name: nucleus-navigator
+          image: nvcr.io/nvidia/omniverse/nucleus-navigator:3.3.6
+          env:
+            - name: ACCEPT_EULA
+              value: "1"
+            - name: PUBLIC_URL
+              value: /
+            - name: SSL
+              value: "0"
+            - name: SETTINGS_JSON
+              value: |
+                {
+                  "etag": "a66b3b6fc8bc5aa68b06f4eba0cb8c8e",
+                  "features": { "soft-delete": 0 },
+                  "storages": {
+                    "items": [
+                      {
+                        "name": "nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com",
+                        "provider": { "type": "nucleus" }
+                      }
+                    ],
+                    "readOnly": true
+                  }
+                }
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          ports:
+            - containerPort: 80

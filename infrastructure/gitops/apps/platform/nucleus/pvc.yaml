@@ -1,0 +1,16 @@
+---
+# Source: omniverse-nucleus/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nucleus-data
+  labels:
+    app.kubernetes.io/part-of: omniverse-nucleus
+    app.kubernetes.io/version: "2023.2.9"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Gi
+  storageClassName: gp3-csi
