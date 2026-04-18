@@ -14,3 +14,7 @@ metadata:
     pod-security.kubernetes.io/audit: privileged
     pod-security.kubernetes.io/warn: privileged
     openshift.io/cluster-monitoring: "true"
+    # Service Mesh 3 sidecar injection — joins the `default` Istio revision
+    # in istio-system. Pods get an istio-proxy sidecar on next restart and
+    # pick up mTLS (intra-mesh pairs) + observability.
+    istio.io/rev: default

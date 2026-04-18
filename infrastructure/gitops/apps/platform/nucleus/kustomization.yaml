@@ -36,3 +36,6 @@ resources:
   - routes.yaml
   # NetworkPolicy (default-deny + explicit allowlists)
   - networkpolicy.yaml
+  # Service Mesh — PeerAuthentication PERMISSIVE (namespace joins the
+  # default Istio revision via the istio.io/rev label on the Namespace)
+  - peerauthentication.yaml
