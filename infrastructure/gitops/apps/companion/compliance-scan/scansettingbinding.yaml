@@ -1,0 +1,22 @@
+apiVersion: compliance.openshift.io/v1alpha1
+kind: ScanSettingBinding
+metadata:
+  name: companion-stig
+  namespace: openshift-compliance
+# Pinned v2r3 profiles for reproducible Phase-0 evidence. A long-running
+# scan against the floating latest profile pair can be added later via
+# a second binding; pinned is the audit artifact.
+profiles:
+  - name: ocp4-stig-v2r3
+    kind: Profile
+    apiGroup: compliance.openshift.io/v1alpha1
+  - name: ocp4-stig-node-v2r3
+    kind: Profile
+    apiGroup: compliance.openshift.io/v1alpha1
+  - name: rhcos4-stig-v2r3
+    kind: Profile
+    apiGroup: compliance.openshift.io/v1alpha1
+settingsRef:
+  name: companion-stig-scan-only
+  kind: ScanSetting
+  apiGroup: compliance.openshift.io/v1alpha1
