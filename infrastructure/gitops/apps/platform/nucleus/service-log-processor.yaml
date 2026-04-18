@@ -4,6 +4,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nucleus-log-processor
+  namespace: omniverse-nucleus
   labels:
     app: nucleus-log-processor
     app.kubernetes.io/part-of: omniverse-nucleus

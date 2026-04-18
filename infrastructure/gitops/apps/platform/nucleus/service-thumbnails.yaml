@@ -4,6 +4,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nucleus-thumbnails
+  namespace: omniverse-nucleus
   labels:
     app: nucleus-thumbnails
     app.kubernetes.io/part-of: omniverse-nucleus
