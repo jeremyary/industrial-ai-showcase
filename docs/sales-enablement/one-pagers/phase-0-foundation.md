@@ -9,7 +9,7 @@ Phase 0 stands up two Git-reconciled OpenShift clusters — an OSD hub with L40S
 ## What's demonstrable today
 
 - **Two clusters, one repo, one Argo.** OSD hub + self-managed companion SNO, both reconciled from Git. 7 companion Applications `Synced + Healthy` via cross-cluster ApplicationSet (PR #22).
-- **GPU.** L40S pool (3 nodes) labeled by GFD, smoke-test Job ran on `nvidia-smi` (PR #10). L4 pool pending SRE.
+- **GPU.** L40S + L4 nodes labeled by GFD; smoke tests on both classes pass (`nvidia-smi` reports correctly on each). PR #10 (L40S) + Session 15 L4 verify.
 - **OpenShift AI 3.4 EA1** on hub, full DSC including `trainer`. MLflow backend (CNPG Postgres + MinIO, Vault-sourced creds). PRs #13–#15.
 - **Security on companion.** FIPS day-1 (`fips=1` cmdline, `crypto.fips_enabled=1`). DISA STIG V2R3 scan: FAIL 119 → 19 after one reboot (105 of 106 auto-remediations; 1 strand-risk waiver). Platform `ClusterImagePolicy` enforcing Red Hat release-signing key. PR #20.
 - **Cross-cluster observability.** Hub Thanos returns `companion + local-cluster`; 95 companion `up` series flowing through ACM MCO (PR #23).
@@ -36,7 +36,6 @@ Phase 0 stands up two Git-reconciled OpenShift clusters — an OSD hub with L40S
 
 ## Caveats (mention before the customer asks)
 
-- No L4 GPU nodes yet — SRE ticket pending.
 - Companion FIPS install has `install.openshift.io/hostcrypt-check-bypassed=true` because the install host is Fedora 43, not RHEL 9. The running cluster is genuinely FIPS; the annotation is an install-chain audit breadcrumb (ADR-017 amendment).
 - `kubeadmin` still present on companion (no IdP yet); 14 STIG rules gated on IdP remain FAIL until Phase 1.
 - Service Mesh 3 is hub-only — no companion workload needs east-west mesh yet.

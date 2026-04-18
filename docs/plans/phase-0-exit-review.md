@@ -14,8 +14,8 @@ Walks every exit criterion from `docs/04-phased-plan.md` Phase 0, marks status, 
 | # | Criterion | Status | Satisfied by |
 |---|---|---|---|
 | 1 | Every installed operator on hub + companion is healthy and reconciled from Git. | **SATISFIED** | Hub operators (RHOAI, CNPG, AMQ Streams, Vault, Service Mesh 3, ACM, COO, GitOps) reconciled by hub Argo (PRs #2–#15). Companion operators (LVMS, Compliance, KubeVirt, UWM config) reconciled by cross-cluster ApplicationSet after Session 13 (PRs #20–#23). All 7 `apps/companion/*` Applications Synced + Healthy. |
-| 2 | DCGM exporter shows all GPUs visible in Grafana, grouped by `nvidia.com/gpu.product`. | **SATISFIED (L40S)** / **DEFERRED (L4)** | Session 07 observability + Session 14 MCO expose GPU metrics in hub Grafana with `nvidia.com/gpu.product` label. L40S pool (3 nodes) visible. **L4 pool not yet provisioned** — OD-1 in `docs/09-risks-and-open-questions.md`; SRE ticket. Listed as Phase 1 precondition below. |
-| 3 | Test Job with `nvidia.com/gpu: 1` + `nvidia.com/gpu.product` nodeSelector runs on both L40S and L4, `nvidia-smi` reports correctly. | **SATISFIED (L40S)** / **DEFERRED (L4)** | L40S Job scheduled + ran in Session 06 (PR #10). L4 smoke test deferred to when L4 nodes are provisioned. |
+| 2 | DCGM exporter shows all GPUs visible in Grafana, grouped by `nvidia.com/gpu.product`. | **SATISFIED** | Session 07 observability + Session 14 MCO expose GPU metrics in hub Grafana with `nvidia.com/gpu.product` label. Both classes present: `NVIDIA-L40S` and `NVIDIA-L4` nodes labeled by GFD, visible under their class strings. |
+| 3 | Test Job with `nvidia.com/gpu: 1` + `nvidia.com/gpu.product` nodeSelector runs on both L40S and L4, `nvidia-smi` reports correctly. | **SATISFIED** | L40S Job scheduled + ran in Session 06 (PR #10). L4 smoke test in Session 15 on `ip-10-0-32-193.ec2.internal` — `nvidia-smi` reported `NVIDIA L4`, driver 580.105.08, CUDA 13.0, 23 GiB memory. |
 | 4 | OpenShift Virtualization availability question for the OSD instance is answered and documented. | **SATISFIED** | Session 01 OD-9 resolution + ADR-017 amendment: OSD's AWS Nitro substrate cannot run KubeVirt; companion hosts the VM story. KubeVirt 4.21.3 installed on companion, HyperConverged Available (Session 12, PR #21). |
 | 5 | ACM on OSD has registered the companion cluster; cross-cluster Argo CD Application reconciles to companion. | **SATISFIED** | Session 13 (PR #22): companion joined ACM `clusters-companion` set; `GitOpsCluster` auto-maintains Argo cluster secret; ApplicationSet matrix generator spawns 7 companion Applications, all Synced + Healthy. Cross-cluster reconciliation via ACM cluster-proxy (no hub→companion direct network). |
 | 6 | A developer can bring up a clone of hub state using only what's in Git (plus documented out-of-band steps for secrets and SRE-ticketed infrastructure). | **SATISFIED (with explicit gaps)** | Every operator + CR is in Git under `infrastructure/gitops/apps/*`. Out-of-band documented: (a) two imperative secrets in `hub-acm/observability/README.md`, (b) manual klusterlet import in `hub-acm/README.md`, (c) Red Hat pull-secret prerequisite, (d) MinIO bucket pre-creation, (e) SRE-ticketed GPU node additions. No undocumented dark magic. |
@@ -27,7 +27,6 @@ Walks every exit criterion from `docs/04-phased-plan.md` Phase 0, marks status, 
 
 Items that came up during Phase 0 and were intentionally pushed:
 
-- **L4 GPU node provisioning** — SRE ticket, 1+ physical node (blocker for exit-criterion #2 + #3 L4 portion). Outside our control.
 - **registry.redhat.io ClusterImagePolicy expansion** — different signing chain (GPG, not the release-signing sigstore key). Phase 1 when we validate the key retrieval story.
 - **GHCR ClusterImagePolicy for showcase images** — depends on locked signing identity (Fulcio vs. cosign key in Vault per ADR-016/023). Phase 1 with first built showcase image.
 - **IdP configuration** — unblocks kubeadmin removal and 13 deferred STIG remediations (OAuth templates, classification banner, cluster-logging rules). Phase 1.
@@ -65,13 +64,12 @@ No `docs/deployment/prerequisites.md` or `docs/deployment/cluster-setup.md` writ
 
 Before Session 16 (first Phase 1 session) can productively start:
 
-1. **L4 GPU nodes provisioned on OSD hub** — 2–3 nodes, `nvidia.com/gpu.product: NVIDIA-L4`. Blocker: SRE ticket. Unblocks exit-criterion #2 + #3 L4 portion and Phase 1 Loop-1 inference workloads.
-2. **NGC credentials in hub Vault** — API key from NGC catalog, stored at `kv/ngc/api-key`, VaultStaticSecret rendered into whatever namespace pulls NIMs. Needed for Cosmos NIM, VSS, GR00T image pulls.
-3. **Nucleus deployment codified in Git** — the existing Nucleus install is pre-existing per ADR-002. Phase 1 expects it reconciled from Git like every other workload; Session 16 captures whatever's deployed today into `apps/platform/nucleus/`.
-4. **First showcase image builds decided** — defines the GHCR signing identity story (Fulcio keyless vs. cosign + Vault key). Blocks the GHCR ClusterImagePolicy authoring.
-5. **IdP choice confirmed** — OIDC provider TBD (Red Hat SSO? htpasswd bootstrap? GitHub OAuth?). Determines the OAuth template remediations and the kubeadmin-removal gate.
+1. **NGC credentials in hub Vault** — API key from NGC catalog, stored at `kv/ngc/api-key`, VaultStaticSecret rendered into whatever namespace pulls NIMs. Needed for Cosmos NIM, VSS, GR00T image pulls.
+2. **Nucleus deployment codified in Git** — the existing Nucleus install is pre-existing per ADR-002. Phase 1 expects it reconciled from Git like every other workload; Session 16 captures whatever's deployed today into `apps/platform/nucleus/`.
+3. **First showcase image builds decided** — defines the GHCR signing identity story (Fulcio keyless vs. cosign + Vault key). Blocks the GHCR ClusterImagePolicy authoring.
+4. **IdP choice confirmed** — OIDC provider TBD (Red Hat SSO? htpasswd bootstrap? GitHub OAuth?). Determines the OAuth template remediations and the kubeadmin-removal gate.
 
-None of these are inside the team's direct control from a Claude Code session — all are either SRE-ticketed infrastructure or product-level decisions. They're preconditions for Phase 1 session planning, not Phase 0 work items.
+None of these are inside the team's direct control from a Claude Code session — all are product-level decisions. They're preconditions for Phase 1 session planning, not Phase 0 work items.
 
 ---
 
@@ -79,7 +77,6 @@ None of these are inside the team's direct control from a Claude Code session �
 
 `docs/09-risks-and-open-questions.md` items as of Phase 0 exit:
 
-- **OD-1** (L4 provisioning) — still OPEN. SRE ticket outstanding.
 - **OD-8** (companion host selection) — RESOLVED (Session 09; GMKTec on Fedora 43).
 - **OD-9** (KubeVirt on OSD) — RESOLVED (Session 01; lives on companion per ADR-017).
 - **NEW: FIPS hostcrypt-check-bypass** — accepted Phase-0 caveat; documented in ADR-017 amendment. Closes when companion rebuilt on RHEL 9.
@@ -90,7 +87,7 @@ None of these are inside the team's direct control from a Claude Code session �
 
 ## Sign-off
 
-Every Phase 0 exit criterion is either satisfied or has an explicit waiver + Phase-1 plan. The reference environment is fit for the Mega Core (Phase 1) work:
+All seven Phase 0 exit criteria are satisfied. The reference environment is fit for the Mega Core (Phase 1) work:
 
 - Two clusters (OSD hub + self-managed SNO companion) reconciled from Git end-to-end.
 - Cross-cluster federation live: one ACM, one Argo, two clusters, one repo.
