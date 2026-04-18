@@ -61,6 +61,20 @@ spec:
               memory: 128Mi
           ports:
             - containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 3010
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 3010
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
           volumeMounts:
             - name: data
               mountPath: /omni/data
