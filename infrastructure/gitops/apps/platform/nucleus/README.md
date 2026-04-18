@@ -44,11 +44,53 @@ Tags verified against NGC `nvcr.io/nvidia/omniverse/*` on 2026-04-18. The itemiz
 
 ## Secrets
 
-| Secret | Source | TODO |
-|---|---|---|
-| `ngc-pull-secret` | Vault `kv/ngc/api-key` → VSS (`ngc-api-key`) → render Job (`ngc-pullsecret-render`) transforms to `dockerconfigjson` | Pattern is final; see `apps/platform/ngc-secrets/README.md`. |
-| `nucleus-passwords` | Plain Secret with placeholder values | **Part D**: VSS from Vault `kv/nucleus/passwords`. |
-| `crypto-secrets` | Generated once by pre-sync `nucleus-crypto-gen` Job; re-runs are idempotent (preserves existing keypairs) | **Part D**: migrate to VSS from Vault `kv/nucleus/crypto` so keypairs live in Vault not in a one-shot-generated K8s Secret. |
+| Secret | Source |
+|---|---|
+| `ngc-pull-secret` | Vault `kv/ngc/api-key` → VSS (`ngc-api-key`) → render Job (`ngc-pullsecret-render`) transforms to `dockerconfigjson`. |
+| `nucleus-passwords` | Vault `kv/nucleus/passwords` → VSS. Rotate: `vault kv put` + bounce auth pod. |
+| `crypto-secrets` | Vault `kv/nucleus/crypto` → VSS. Seven keys (JWT keypairs, salts, discovery token). Rotate carefully — tokens issued before rotation become invalid. |
+
+## One-time setup
+
+Before the first sync, seed Vault with passwords + crypto material. Both require the Vault root token (held by the operator since Vault init).
+
+### `kv/nucleus/passwords`
+
+```bash
+oc exec -n vault -it vault-0 -- sh
+# inside pod:
+export VAULT_TOKEN=<root-token>
+vault kv put kv/nucleus/passwords \
+  master-password=<strong-password> \
+  service-password=<strong-password>
+exit
+```
+
+### `kv/nucleus/crypto`
+
+Generate the 7 keys once, then seed. Example flow (run inside the vault pod shell for convenience, export VAULT_TOKEN first):
+
+```bash
+# keypairs + salts + token
+WORK=$(mktemp -d)
+openssl genrsa 4096 2>/dev/null > $WORK/auth_root_of_trust_pri
+openssl rsa -pubout < $WORK/auth_root_of_trust_pri 2>/dev/null > $WORK/auth_root_of_trust_pub
+openssl genrsa 4096 2>/dev/null > $WORK/auth_root_of_trust_lt_pri
+openssl rsa -pubout < $WORK/auth_root_of_trust_lt_pri 2>/dev/null > $WORK/auth_root_of_trust_lt_pub
+dd if=/dev/urandom bs=1 count=128 2>/dev/null | od -An -tx1 | tr -d ' \n' | head -c 256 > $WORK/svc_reg_token
+dd if=/dev/urandom bs=1 count=4   2>/dev/null | od -An -tx1 | tr -d ' \n' | head -c 8   > $WORK/pwd_salt      # blake2b caps at 16
+dd if=/dev/urandom bs=1 count=128 2>/dev/null | od -An -tx1 | tr -d ' \n' | head -c 256 > $WORK/lft_salt
+
+# Assemble to a JSON that vault kv put accepts via stdin
+python3 -c "
+import json, sys
+keys = ['auth_root_of_trust_pri','auth_root_of_trust_pub','auth_root_of_trust_lt_pri','auth_root_of_trust_lt_pub','svc_reg_token','pwd_salt','lft_salt']
+out = {k: open(f'$WORK/{k}').read() for k in keys}
+print(json.dumps(out))
+" | vault kv put kv/nucleus/crypto -
+```
+
+Rotation that preserves token validity: copy the existing values, then rotate one key at a time and restart dependent pods in sequence.
 
 ## Verification (once Argo syncs)
 
