@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: isaac-sim
+  namespace: isaac-sim
+  labels:
+    app: isaac-sim
+spec:
+  podSelector:
+    matchLabels:
+      app: isaac-sim
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - {}
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: isaac-sim
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: fleet-ops
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-ingress
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-monitoring

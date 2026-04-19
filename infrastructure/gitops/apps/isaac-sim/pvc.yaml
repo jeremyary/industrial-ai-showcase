@@ -1,0 +1,32 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: isaac-sim-cache
+  namespace: isaac-sim
+  labels:
+    app: isaac-sim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Isaac Sim's Omniverse shader/asset cache grows as scenes load.
+      # 50Gi covers Warehouse + Nova Carter + G1 asset compilation with headroom.
+      storage: 50Gi
+  storageClassName: gp3
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: isaac-sim-logs
+  namespace: isaac-sim
+  labels:
+    app: isaac-sim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: gp3
