@@ -24,7 +24,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.12 python3.12-venv python3-pip git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-RUN python3.12 -m pip install --upgrade pip setuptools wheel
+# Don't try to upgrade apt-installed pip (no RECORD → can't uninstall).
+# Use --root-user-action=ignore since we're definitely root here.
+ENV PIP_ROOT_USER_ACTION=ignore
+RUN python3.12 -m pip install --upgrade --ignore-installed setuptools wheel
 # PyTorch for ROCm 6.2 — gfx1151 (Strix Halo) runs these via HSA_OVERRIDE_GFX_VERSION=11.5.1.
 RUN python3.12 -m pip install --index-url https://download.pytorch.org/whl/rocm6.2 torch torchvision
 
@@ -53,8 +56,16 @@ RUN pip3 install --no-cache-dir \
     && chown -R 1001:0 /opt/app
 
 # Real-model deps only land in the :rocm image.
+# transformers pinned to 4.40.x — OpenVLA's trust_remote_code registrations
+# target the pre-5.0 API (AutoModelForVision2Seq, LlamaTokenizer behaviors).
+# accelerate + timm versions pinned compatibly with transformers 4.40.
 RUN if [ -f /etc/os-release ] && grep -q ubuntu /etc/os-release; then \
-        pip3 install --no-cache-dir transformers accelerate timm ; \
+        pip3 install --no-cache-dir \
+            "transformers==4.40.1" \
+            "tokenizers>=0.19,<0.20" \
+            "accelerate==0.30.1" \
+            "timm==0.9.16" \
+            sentencepiece ; \
     fi
 
 USER 1001

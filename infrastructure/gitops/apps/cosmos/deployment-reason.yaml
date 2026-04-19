@@ -51,6 +51,14 @@ spec:
               containerPort: 8000
               protocol: TCP
           env:
+            # OpenShift runs this container as a non-root UID without a
+            # writable home; flashinfer/jit/core tries to mkdir '/.cache'
+            # on import and crashes. Point HOME + XDG_CACHE_HOME at the
+            # PVC mount so JIT compile + HF caches both work.
+            - name: HOME
+              value: /cache/home
+            - name: XDG_CACHE_HOME
+              value: /cache/xdg
             - name: HF_HOME
               value: /cache/hf
             - name: HUGGING_FACE_HUB_TOKEN
