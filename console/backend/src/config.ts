@@ -1,0 +1,27 @@
+// This project was developed with assistance from AI tools.
+export interface AppConfig {
+  port: number;
+  logLevel: string;
+  kafkaBootstrapServers: string;
+  kafkaClientId: string;
+  kafkaConsumerGroup: string;
+  kafkaTopics: string[];
+  wmsStubBaseUrl: string;
+}
+
+export function loadConfig(): AppConfig {
+  return {
+    port: parseInt(process.env.PORT ?? "8090", 10),
+    logLevel: process.env.LOG_LEVEL ?? "info",
+    kafkaBootstrapServers:
+      process.env.KAFKA_BOOTSTRAP_SERVERS ??
+      "fleet-kafka-bootstrap.fleet-ops.svc.cluster.local:9092",
+    kafkaClientId: process.env.KAFKA_CLIENT_ID ?? "showcase-console",
+    kafkaConsumerGroup:
+      process.env.KAFKA_CONSUMER_GROUP ?? "showcase-console",
+    kafkaTopics:
+      (process.env.KAFKA_TOPICS ?? "fleet.events,fleet.missions,fleet.ops.events,fleet.telemetry").split(","),
+    wmsStubBaseUrl:
+      process.env.WMS_STUB_BASE_URL ?? "http://wms-stub.fleet-ops.svc.cluster.local:8082",
+  };
+}

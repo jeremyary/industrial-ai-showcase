@@ -1,0 +1,21 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: mission-dispatcher
+  namespace: robot-edge
+  labels:
+    app: mission-dispatcher
+    phase: phase-1
+spec:
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: workloads/mission-dispatcher/container/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: mission-dispatcher:latest
+  triggers: []

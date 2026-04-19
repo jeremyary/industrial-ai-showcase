@@ -1,0 +1,20 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: wms-stub
+  namespace: fleet-ops
+  labels:
+    app: wms-stub
+  annotations:
+    # The seller triggers scenarios against this route during demos.
+    haproxy.router.openshift.io/timeout: "30s"
+spec:
+  to:
+    kind: Service
+    name: wms-stub
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

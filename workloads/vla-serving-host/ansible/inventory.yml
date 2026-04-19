@@ -1,0 +1,10 @@
+# Ansible inventory for the companion Fedora 43 host that runs the VLA serving
+# systemd unit (per ADR-026). The SSH alias 'companion' is configured in the
+# user's workstation ~/.ssh/config (per CLAUDE.md) and points at daddo@10.0.0.73.
+---
+all:
+  hosts:
+    companion:
+      ansible_host: companion
+      ansible_user: daddo
+      ansible_python_interpreter: /usr/bin/python3

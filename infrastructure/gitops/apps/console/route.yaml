@@ -1,0 +1,20 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: showcase-console
+  namespace: fleet-ops
+  labels:
+    app: showcase-console-frontend
+  annotations:
+    haproxy.router.openshift.io/timeout: "5m"
+    haproxy.router.openshift.io/timeout-tunnel: "1h"
+spec:
+  to:
+    kind: Service
+    name: showcase-console-frontend
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

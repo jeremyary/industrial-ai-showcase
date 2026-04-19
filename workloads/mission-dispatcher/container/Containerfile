@@ -1,0 +1,26 @@
+# This project was developed with assistance from AI tools.
+# Build from repo root: podman build -f workloads/mission-dispatcher/container/Containerfile -t mission-dispatcher:dev .
+FROM registry.access.redhat.com/ubi9/python-312:latest
+
+USER 0
+RUN dnf install -y --setopt=install_weak_deps=False \
+        librdkafka \
+    && dnf clean all && rm -rf /var/cache/dnf
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /opt/app-root/src
+
+COPY workloads/common/python-lib /opt/app-root/src/common-lib
+RUN pip install /opt/app-root/src/common-lib
+
+COPY workloads/mission-dispatcher/pyproject.toml /opt/app-root/src/mission-dispatcher/
+COPY workloads/mission-dispatcher/src /opt/app-root/src/mission-dispatcher/src
+RUN pip install /opt/app-root/src/mission-dispatcher
+
+USER 1001
+EXPOSE 8081
+CMD ["uvicorn", "mission_dispatcher.main:app", "--host", "0.0.0.0", "--port", "8081"]

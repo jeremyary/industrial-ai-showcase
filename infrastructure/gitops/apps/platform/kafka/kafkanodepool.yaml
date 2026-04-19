@@ -1,0 +1,33 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: fleet-brokers
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+spec:
+  replicas: 3
+  # Combined roles — for the reference demo cluster we run controller + broker
+  # on the same 3 nodes. Customer production deployments typically split these.
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 20Gi
+        kraftMetadata: shared
+        deleteClaim: false
+        class: gp3
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+  jvmOptions:
+    "-Xms": "1024m"
+    "-Xmx": "2048m"

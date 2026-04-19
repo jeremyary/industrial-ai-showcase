@@ -494,6 +494,86 @@ We accept that we own every consequence of diverging from NVIDIA's sanctioned pa
 
 ---
 
+## ADR-025: Companion cluster is the per-factory robot-edge deployment target
+
+**Status**: Accepted
+
+**Context**: ADR-017 established the hub-plus-companion topology. Through Phase 0 the companion earned the security-posture role (FIPS, STIG, air-gap, Sigstore enforce). Through Session 12 it gained KubeVirt. But up through the end of Session 16, the companion had no *workload role* in the demo narrative — it was a cluster with capabilities and no story. That was a smell.
+
+The topology already tells the hybrid-cloud-to-factory-edge story we sell; it just needs workloads to fill it. The hub is the datacenter/cloud side — Isaac Sim (L40S-heavy), Kit streaming, MLflow, Fleet Manager, Mission Planner orchestration. The companion is the factory-edge side — closer to the robot by topology, latency-bounded, air-gap-capable, GPU-budget-appropriate for per-robot inference (single L4 class).
+
+**Decision**: The companion cluster represents **the per-factory edge deployment target for robot workloads**. Concrete role assignments:
+
+- **Robot-brain inference serving (VLA + scene reasoning)** runs on companion via RHOAI KServe + vLLM. Companion's L4-class GPU carries the load. Primary VLA is an open model (OpenVLA / pi-0 / SmolVLA) per licensing-gates doc; NVIDIA GR00T slots in as an interchangeable alternative if a commercial path resolves.
+- **Cross-cluster message flow**: Fleet Manager on hub dispatches missions via Kafka MirrorMaker (or equivalent) to the companion's mission topic; Mission Dispatcher on companion routes to the local inference endpoint; action and telemetry flow back to hub for observability and MLOps feedback. This is the hybrid-cloud/factory-edge topology made concrete.
+- **KubeVirt on companion hosts a legacy-controller VM** (ADR-017's "containers + VMs + vGPU on one platform" differentiator gets a concrete demo moment): a Windows or legacy-Linux VM that represents a factory-floor PLC / SCADA gateway the robot coexists with. This VM is Phase-2 scope; not a Phase-1 blocker.
+- **Security posture framing shifts**: companion's FIPS / STIG / air-gap / Sigstore-enforce work is now positioned as "the factory-side cluster posture" — answers the OT / industrial-control-system security question specifically, not abstract Red Hat security flex. The sales differentiator-mapping task (#19) will formalize this framing.
+- **Cross-cluster federation**: Fleet Manager on hub uses ACM-mediated connectivity; cross-cluster Argo (Session 13) already delivers companion manifests from Git; MCO (Session 14) already federates metrics. No new cross-cluster infrastructure needed — we fill the already-built plumbing with real workloads.
+
+**Consequences**:
+
+- **Every piece of companion infrastructure (Sessions 9–16) earns a demo role.** FIPS, STIG, Compliance Operator, mesh enrollment, KubeVirt, LVMS, cross-cluster Argo — each now has a sales story tied to "this is how you run the robot-edge side of a factory."
+- **Phase-1 plan shifts for item 10 (Robot Brain serving)**: the InferenceService lives on companion, not hub. Fleet Manager and Mission Dispatcher on hub call it cross-cluster.
+- **Phase-2 plan gains a VM workload**: one KubeVirt VM on companion standing in for a legacy controller. Low-cost to stand up; high-value demo moment.
+- **The "hybrid cloud → factory edge → robot" differentiator** is no longer a diagram — it's a live topology a seller can walk through. Hub is the cloud/datacenter cluster; companion is the factory-edge cluster; Jetson-class edge is the eventual on-robot target (Phase 2+ MicroShift).
+- **Companion's CPU-only posture stays intact** except for the one L4-class GPU we allocate for VLA serving. No L40S work moves to companion — Isaac Sim, Cosmos Predict/Transfer, Kit streaming all stay hub-side.
+- **Air-gap demonstration story is strengthened**: "the robot-edge cluster at a real factory is air-gapped; the same reference ships there as to our hub." The companion is the site where air-gap validation happens.
+- **This ADR does not commit to a physical second cluster** — the companion remains the GMKTec Evo-X2 KVM SNO per ADR-017 for now. Phase 2 may provision additional spoke clusters (spoke-a / spoke-b) representing additional factories, each a companion-like SNO.
+
+**Supersedes / interacts with**:
+
+- ADR-017 amendment (FIPS bypass) — unchanged. Companion's security role is re-framed but the technical posture is the same.
+- Phase 1 work-item 10 — re-scoped: VLA + Cosmos Reason 2 deploy on companion, not hub. Phased-plan edit tracked in task #20.
+- Optional demo-narration supplement: if a specific demo beat benefits from explaining model placement by frequency tier (mission planner at 0.25-1 Hz / VLA + scene reasoning at 10-50 Hz / on-robot WBC at 200-250 Hz), the cloud/datacenter vs factory-edge split this ADR commits to maps cleanly onto that framing. Use per beat; not an architectural commitment.
+
+---
+
+## ADR-026: VLA serving runs host-native on companion Fedora host; pod-native serving deferred to Jetson Thor (Phase 3/4)
+
+**Status**: Accepted
+
+**Context**: ADR-025 committed VLA serving to the companion cluster via RHOAI KServe + vLLM. Probing the companion hardware and researching the ecosystem for Phase-1 planning surfaced three facts that make the pod-native vLLM path unworkable on the current companion:
+
+1. **The companion's actual OS stack is two-layer**: a Fedora 43 host (kernel 6.19.8, `amdgpu` + `amdxcp` loaded, ROCm HSA agents visible for Zen 5 CPU, Radeon 8060S gfx1151 iGPU, and XDNA 2 aie2 NPU) runs an SNO cluster as a RHCOS 9.6 VM (kernel 5.14). The host has a complete working ROCm stack — the user already serves 120B- and 235B-parameter LLMs via source-built llama.cpp (`GGML_HIP=ON`, linked to `libhipblas`/`librocblas`/`libamdhip64`/`libhsa-runtime64`) and ollama 0.18.1's ROCm runner. llama.cpp reports 102 400 MiB GTT-addressable memory. The SNO VM, on kernel 5.14, cannot reach the GPU — pods inside SNO see no AMD device, and no supported device-plugin path bridges the kernel gap.
+
+2. **vLLM does not serve OpenVLA**, independent of hardware: upstream vLLM closed the OpenVLA support request as "not planned" on 2026-03-30 (issue `vllm-project/vllm#14739`). OpenVLA's fused DINOv2 + SigLIP vision tower is specifically the multi-vision-tower case vLLM has parked. Separately, vLLM on gfx1151 crashes at startup (`lemonade-sdk/vllm-rocm#3`, April 2026) — both a model-support gap and a hardware-support gap simultaneously.
+
+3. **AMD GPU Operator for OpenShift is Instinct-only.** The 1.4.1 release notes and the Red Hat OpenShift 4.20 docs list MI210 / MI250 / MI300 / MI35X; no RDNA, no APU, no gfx1151. The supported consumer path is manual `ROCm/k8s-device-plugin` DaemonSet manifests — possible, but it's a blank-sheet integration, not a paved path. Operator-less parity with the NVIDIA GPU Operator story does not exist for Red Hat customers today on AMD consumer/APU edges.
+
+A naive re-plan would propose replacing SNO with MicroShift directly on the Fedora host so pods inherit the modern kernel. That path was considered and rejected: MicroShift intentionally does not ship OpenShift Virtualization / KubeVirt, and the companion's KubeVirt role (legacy PLC-gateway VM, Purdue-model overlay beat in the 20-min demo's Segment 4) is a load-bearing brownfield-integration differentiator. Trading the brownfield story for ROCm parity would weaken a higher-value beat to fix a lower-value one.
+
+A second alternative — iGPU passthrough into the SNO VM via VFIO — was considered and rejected: iGPU passthrough is fragile, strips the host of GPU access (breaking the user's existing LLM workflows), and does not remove the AMD-on-OpenShift operator gap. Would trade reliability for an architectural purity we don't need.
+
+**Decision**: For Phase 1, **VLA serving on the companion runs as a host-native systemd service on the Fedora 43 host**, not as a KServe InferenceService inside the SNO cluster. Specifically:
+
+- **Serving runtime**: PyTorch + transformers + ROCm (HIP backend), wrapping OpenVLA's reference `deploy.py` REST server. Exposed as an HTTP endpoint on the host bridge network. llama.cpp (already on the box) is used for non-multimodal model paths — e.g., text-only agent brains in Phase 3 — but not for OpenVLA's multimodal path in Phase 1.
+- **Packaging**: podman-managed systemd unit in `workloads/vla-serving-host/`, Ansible-provisioned, described in Git. Not a Helm chart, not a KServe manifest. GitOps remains the source of truth for the cluster side; the host-level VLA runtime is managed parallel to it via Ansible.
+- **Wiring**: **Mission Dispatcher pod inside the SNO cluster HTTP-calls the host VLA endpoint** via the bridge network. The cluster-side components (Mission Dispatcher, Fleet Manager, Kafka, MES-stub, KubeVirt PLC-gateway VM, Service Mesh) all continue to live inside SNO per ADR-025; only the inference runtime moves out.
+- **Narration contract** (for demos that reference this): the 5-min and 20-min scripts surface this honestly — *"the robot-brain runtime lives on the edge node itself, using the ROCm stack that ships with the hardware. In this reference the serving is host-local because AMD consumer accelerators don't yet have first-class Kubernetes device-plugin parity with NVIDIA. On a Jetson edge it'd be a MicroShift pod; on a dedicated x86 + dGPU edge it'd be an SNO pod. The platform story is consistent — OpenShift orchestrates the cluster side, the serving runtime lives where the hardware is fastest."*
+- **Phase 1 primary VLA**: OpenVLA-7B in bf16 as the default, sized to fit comfortably in the 102 GiB GTT-addressable memory. SmolVLA-450M and π0 provisioned as pluggable alternatives for the 60-min live-swap beat in Phase 3.
+- **A second, pod-native edge pattern arrives with Jetson Thor**: a Jetson AGX Thor Developer Kit has been ordered. When it lands, it joins the reference as a second edge target running MicroShift + NVIDIA GPU Operator + KServe + vLLM-for-multimodal with CUDA-native serving. The 60-min Segment-4 live-swap beat then becomes *"the same open VLA serving on an AMD edge host, then on the Jetson Thor edge pod"* — demonstrating substrate-heterogeneity as an honest story, not a papered-over gap. Thor is a Phase 3 / Phase 4 materialization; it does not block Phase 1.
+
+**Consequences**:
+
+- **Phase 1 starts without waiting on hardware or on a companion rebuild.** The Fedora host already has the ROCm stack running workloads heavier than OpenVLA — inference on the iGPU is a known-working path. Phase 1 item 10 becomes "provision a host-native VLA systemd unit + bridge-network route from SNO"; no device-plugin integration, no SNO rebuild, no RHCOS kernel layering.
+- **The brownfield + KubeVirt story is preserved intact**: SNO stays, `kubevirt-hyperconverged` keeps running in `openshift-cnv`, the 20-min Segment-4 PLC-gateway VM beat is unaffected.
+- **ADR-025 remains correct in intent** (companion IS the per-factory edge target) but its claim that serving runs *inside the companion cluster* is partially superseded for Phase 1: serving runs on the companion *node*, not inside the companion *cluster*. The architectural distinction is worth naming honestly — serving lives at the edge (correct per ADR-025's intent), below the OpenShift layer (pragmatic given the AMD-consumer operator gap).
+- **vLLM is off the Phase-1 VLA-serving path entirely.** It may return in Phase 3 for the Thor edge or for hub-side dev workloads (L4 / L40S) where the OpenVLA-support gap can be addressed with a custom vLLM build, but it's not the Phase 1 runtime. KServe's custom-predictor pattern remains the design target for *eventual* pod-native VLA serving.
+- **A new differentiator surface emerges**: "substrate heterogeneity across edges" — the reference demonstrates two honest edge patterns (AMD consumer APU host-native via ROCm; NVIDIA Jetson Thor pod-native via CUDA). This reinforces differentiator #6 (open model choice) and adds a "choose-your-silicon" dimension to differentiator #3 (hybrid cloud → factory edge → robot, one operational model — across *heterogeneous* substrates, not uniform ones).
+- **A gap is named honestly in the sales-enablement posture**: *"AMD consumer/APU hardware on OpenShift does not have first-class NVIDIA-parity operator coverage today."* Archetype-C customers evaluating AMD-edge deployments get a straight answer rather than vendor deflection. The `docs/sales-enablement/security-posture.md` Phase-2 doc and an objection-card entry will capture this.
+- **Phase 2 gains no new items from this ADR.** Phase 2's multi-site + MLOps + brownfield beats are unaffected. Phase 3 gains a Thor-bring-up item when the hardware arrives (provision MicroShift, install NVIDIA GPU Operator, wire to ACM, deploy VLA via KServe custom predictor + vLLM-or-transformers); Phase 4's physical-robot integration (Unitree G1 or alternate) pairs with Thor as the compute brain.
+- **XDNA 2 NPU exposure is explicitly deferred.** It's a DSP-class HSA agent visible to ROCm but has no production Kubernetes device-plugin story as of April 2026. Parked as a Phase-5 exploration item if FastFlowLM or equivalent upstream matures.
+
+**Supersedes / interacts with**:
+
+- ADR-025 — companion-as-robot-edge role intact; serving-location specifics for Phase 1 amended (host-native, not pod-native).
+- ADR-024 — Nucleus codification unaffected.
+- Phase 1 work-item 10 in `04-phased-plan.md` — rewritten to reflect host-native serving, bridge-network wiring, and Ansible-managed podman systemd unit.
+- `docs/licensing-gates.md` — OpenVLA remains primary; GR00T remains optional-pluggable; SmolVLA + π0 added as pre-provisioned pluggable alternatives for the 60-min live-swap beat.
+- Future Thor-arrival ADR will formalize the second edge pattern when the hardware is in hand.
+
+---
+
 These are decisions we're aware of but not yet making — they're documented in `09-risks-and-open-questions.md` rather than being forced here.
 
 - Physical hardware: do we buy a Unitree G1 for Phase 4 hardware integration?

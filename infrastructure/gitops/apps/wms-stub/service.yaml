@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wms-stub
+  namespace: fleet-ops
+  labels:
+    app: wms-stub
+spec:
+  selector:
+    app: wms-stub
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP

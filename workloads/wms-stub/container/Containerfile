@@ -1,0 +1,26 @@
+# This project was developed with assistance from AI tools.
+# Build from repo root: podman build -f workloads/wms-stub/container/Containerfile -t wms-stub:dev .
+FROM registry.access.redhat.com/ubi9/python-312:latest
+
+USER 0
+RUN dnf install -y --setopt=install_weak_deps=False \
+        librdkafka \
+    && dnf clean all && rm -rf /var/cache/dnf
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /opt/app-root/src
+
+COPY workloads/common/python-lib /opt/app-root/src/common-lib
+RUN pip install /opt/app-root/src/common-lib
+
+COPY workloads/wms-stub/pyproject.toml /opt/app-root/src/wms-stub/
+COPY workloads/wms-stub/src /opt/app-root/src/wms-stub/src
+RUN pip install /opt/app-root/src/wms-stub
+
+USER 1001
+EXPOSE 8082
+CMD ["uvicorn", "wms_stub.main:app", "--host", "0.0.0.0", "--port", "8082"]

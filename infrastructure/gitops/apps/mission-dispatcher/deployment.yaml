@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mission-dispatcher
+  namespace: robot-edge
+  labels:
+    app: mission-dispatcher
+    phase: phase-1
+  annotations:
+    image.openshift.io/triggers: |-
+      [{"from":{"kind":"ImageStreamTag","name":"mission-dispatcher:latest","namespace":"robot-edge"},"fieldPath":"spec.template.spec.containers[?(@.name==\"mission-dispatcher\")].image"}]
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: mission-dispatcher
+  template:
+    metadata:
+      labels:
+        app: mission-dispatcher
+    spec:
+      serviceAccountName: mission-dispatcher
+      containers:
+        - name: mission-dispatcher
+          image: mission-dispatcher:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+              name: http
+          env:
+            - name: SERVICE_NAME
+              value: mission-dispatcher
+            - name: LOG_LEVEL
+              value: INFO
+            - name: ENVIRONMENT
+              value: demo
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: mission-dispatcher-config
+                  key: kafka.bootstrap.servers
+            - name: KAFKA_SECURITY_PROTOCOL
+              valueFrom:
+                configMapKeyRef:
+                  name: mission-dispatcher-config
+                  key: kafka.security.protocol
+            # Phase 1: skip server-cert CN verification (companion doesn't have
+            # cluster CA trust store plumbed yet). Phase 2 replaces this with
+            # MirrorMaker2 + KafkaUser mTLS via Service Mesh.
+            - name: KAFKA_ENABLE_SSL_CERTIFICATE_VERIFICATION
+              value: "false"
+            - name: VLA_ENDPOINT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: mission-dispatcher-config
+                  key: vla.endpoint.url
+            - name: VLA_REQUEST_TIMEOUT_S
+              value: "10"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15

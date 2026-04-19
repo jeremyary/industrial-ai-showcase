@@ -1,0 +1,69 @@
+# Phase 1 core topics for the 5-min warehouse baseline demo loop.
+# Partition counts sized for single-factory Phase-1 scope; Phase-2 multi-site
+# MirrorMaker introduces per-factory partitioning and bumps replication-factor
+# considerations. See docs/sales-enablement/fleet-scale-operating-math.md
+# (Phase 2 deliverable).
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: fleet-events
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+spec:
+  topicName: fleet.events
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    compression.type: producer
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: fleet-missions
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+spec:
+  topicName: fleet.missions
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    compression.type: producer
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: fleet-telemetry
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+spec:
+  topicName: fleet.telemetry
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    compression.type: producer
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: fleet-ops-events
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+spec:
+  topicName: fleet.ops.events
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    compression.type: producer

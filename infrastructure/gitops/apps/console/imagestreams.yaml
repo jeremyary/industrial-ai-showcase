@@ -1,0 +1,18 @@
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: showcase-console-backend
+  namespace: fleet-ops
+  labels:
+    app: showcase-console-backend
+    phase: phase-1
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: showcase-console-frontend
+  namespace: fleet-ops
+  labels:
+    app: showcase-console-frontend
+    phase: phase-1

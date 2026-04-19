@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fleet-ops
+  labels:
+    # Phase 1 workloads — Fleet Manager, WMS-Stub, camera-adapter — live here.
+    # Mission Dispatcher lives in robot-edge on the companion cluster.
+    phase: phase-1
+    layer: workload
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
