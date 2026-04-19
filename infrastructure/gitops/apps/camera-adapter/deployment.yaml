@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: camera-adapter
+  namespace: fleet-ops
+  labels:
+    app: camera-adapter
+    phase: phase-1
+  annotations:
+    image.openshift.io/triggers: |-
+      [{"from":{"kind":"ImageStreamTag","name":"camera-adapter:latest","namespace":"fleet-ops"},"fieldPath":"spec.template.spec.containers[?(@.name==\"camera-adapter\")].image"}]
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: camera-adapter
+  template:
+    metadata:
+      labels:
+        app: camera-adapter
+    spec:
+      serviceAccountName: camera-adapter
+      containers:
+        - name: camera-adapter
+          image: camera-adapter:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+              name: http
+          env:
+            - name: SERVICE_NAME
+              value: camera-adapter
+            - name: LOG_LEVEL
+              value: INFO
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: fleet-kafka-bootstrap.fleet-ops.svc:9092
+            - name: COSMOS_ENDPOINT_URL
+              value: http://cosmos-reason.cosmos.svc.cluster.local:8000/v1/chat/completions
+            - name: COSMOS_MODEL
+              value: cosmos-reason-1
+            - name: RTSP_URIS
+              value: ""
+            - name: FRAME_SAMPLE_HZ
+              value: "1"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15

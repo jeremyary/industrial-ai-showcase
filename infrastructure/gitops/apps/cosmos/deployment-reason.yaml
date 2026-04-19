@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cosmos-reason
+  namespace: cosmos
+  labels:
+    app: cosmos-reason
+    phase: phase-1
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cosmos-reason
+  template:
+    metadata:
+      labels:
+        app: cosmos-reason
+    spec:
+      serviceAccountName: cosmos-reason
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-L4
+      runtimeClassName: nvidia
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: vllm
+          # Pinned to a vLLM release that ships with Qwen2-VL decoder support
+          # (Cosmos-Reason1 is a Qwen2-VL-based multimodal reasoning model).
+          image: vllm/vllm-openai:v0.8.5
+          imagePullPolicy: IfNotPresent
+          args:
+            - --model
+            - nvidia/Cosmos-Reason1-7B
+            - --served-model-name
+            - cosmos-reason-1
+            - --trust-remote-code
+            - --max-model-len
+            - "4096"
+            - --gpu-memory-utilization
+            - "0.9"
+            - --dtype
+            - bfloat16
+            - --limit-mm-per-prompt
+            - "image=1"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: HF_HOME
+              value: /cache/hf
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+                  optional: true
+            - name: VLLM_LOGGING_LEVEL
+              value: INFO
+            - name: NCCL_DEBUG
+              value: WARN
+          resources:
+            requests:
+              cpu: 2
+              memory: 16Gi
+              nvidia.com/gpu: 1
+            limits:
+              cpu: 8
+              memory: 48Gi
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: cache
+              mountPath: /cache
+            - name: shm
+              mountPath: /dev/shm
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 180
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 40
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 600
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: cosmos-reason-cache
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi

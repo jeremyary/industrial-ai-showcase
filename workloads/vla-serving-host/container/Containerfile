@@ -16,7 +16,10 @@ ARG BASE_FLAVOR=slim
 
 FROM registry.access.redhat.com/ubi9/python-312:latest AS slim
 
-FROM docker.io/rocm/dev-ubuntu-22.04:7.2 AS rocm
+FROM docker.io/rocm/dev-ubuntu-24.04:7.2 AS rocm
+# Ubuntu 24.04 ships python3.12 by default. PEP 668 blocks system pip; we
+# set PIP_BREAK_SYSTEM_PACKAGES since this container is single-purpose.
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.12 python3.12-venv python3-pip git ca-certificates \
