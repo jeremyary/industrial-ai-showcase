@@ -9,6 +9,7 @@ resources:
   - vault-static-secret-ngc.yaml
   - ngc-pullsecret-render-job.yaml
   - pvc.yaml
+  - configmap-scenarios.yaml
   - deployment.yaml
   - service.yaml
   - networkpolicy.yaml
