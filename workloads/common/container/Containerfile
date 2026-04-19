@@ -1,0 +1,29 @@
+# This project was developed with assistance from AI tools.
+# Shared base image for industrial-ai-showcase Python services.
+# Individual services build their own final-stage images layering on this,
+# installing their pyproject.toml deps and copying their src tree.
+#
+# Built as `quay.io/redhat-physical-ai-reference/python-svc-base:<sha>`.
+# Dockerfile consumed by Tekton via the workloads/*/container/ convention.
+FROM registry.access.redhat.com/ubi9/python-312:latest
+
+USER 0
+
+# gcc + development tooling needed for confluent-kafka (librdkafka) C extension builds.
+RUN dnf install -y --setopt=install_weak_deps=False \
+        librdkafka \
+        librdkafka-devel \
+        gcc \
+        python3-devel \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /opt/app-root/src
+
+# Non-root runtime user per OpenShift SCC conventions.
+USER 1001

@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fleet-manager
+  namespace: fleet-ops
+  labels:
+    app: fleet-manager
+    phase: phase-1
+  annotations:
+    image.openshift.io/triggers: |-
+      [{"from":{"kind":"ImageStreamTag","name":"fleet-manager:latest","namespace":"fleet-ops"},"fieldPath":"spec.template.spec.containers[?(@.name==\"fleet-manager\")].image"}]
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: fleet-manager
+  template:
+    metadata:
+      labels:
+        app: fleet-manager
+    spec:
+      serviceAccountName: fleet-manager
+      containers:
+        - name: fleet-manager
+          image: fleet-manager:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SERVICE_NAME
+              value: fleet-manager
+            - name: LOG_LEVEL
+              value: INFO
+            - name: ENVIRONMENT
+              value: demo
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: fleet-kafka-bootstrap.fleet-ops.svc:9092
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: PLAINTEXT
+            - name: POLICY_VERSION
+              value: vla-warehouse-v1.3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15

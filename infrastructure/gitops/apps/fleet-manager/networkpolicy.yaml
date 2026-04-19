@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fleet-manager
+  namespace: fleet-ops
+  labels:
+    app: fleet-manager
+spec:
+  podSelector:
+    matchLabels:
+      app: fleet-manager
+  policyTypes:
+    - Ingress
+    - Egress
+  # Permissive egress for Phase 1 — matches the pattern RHOAI's own `mlflow`
+  # NetworkPolicy uses. Crafting precise OVN-Kubernetes-compatible egress rules
+  # (kube-dns is a service IP that NATs to openshift-dns pods; naive
+  # namespaceSelector match did not land DNS through consistently) is Phase 2
+  # hardening work alongside Service Mesh mTLS.
+  egress:
+    - {}
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-monitoring
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-user-workload-monitoring
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: fleet-ops
+      ports:
+        - protocol: TCP
+          port: 8080

@@ -1,0 +1,8 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: mission-dispatcher
+  namespace: robot-edge
+  labels:
+    app: mission-dispatcher
+    phase: phase-1

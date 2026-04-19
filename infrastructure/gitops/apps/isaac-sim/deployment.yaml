@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: isaac-sim
+  namespace: isaac-sim
+  labels:
+    app: isaac-sim
+    phase: phase-1
+spec:
+  replicas: 1
+  # Isaac Sim holds exclusive locks on the Omniverse local cache PVC —
+  # Recreate prevents two pods fighting for the same file locks.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: isaac-sim
+  template:
+    metadata:
+      labels:
+        app: isaac-sim
+    spec:
+      serviceAccountName: isaac-sim
+      imagePullSecrets:
+        - name: ngc-pull-secret
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-L40S
+      runtimeClassName: nvidia
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: isaac-sim
+          image: nvcr.io/nvidia/isaac-sim:5.0.0
+          imagePullPolicy: IfNotPresent
+          # Headless Kit runner with WebRTC livestream for viewport embedding.
+          # See workloads/isaac-sim/scenarios/ for scene/scenario configs that
+          # override default startup behavior.
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              /isaac-sim/runheadless.sh \
+                --/app/livestream/webrtcEnabled=true \
+                --/app/livestream/nativeStreamerEnabled=true
+          env:
+            - name: ACCEPT_EULA
+              value: "Y"
+            - name: PRIVACY_CONSENT
+              value: "Y"
+            - name: OMNI_KIT_ACCEPT_EULA
+              value: "Y"
+            - name: OMNI_SERVER
+              value: "omniverse://nucleus-api.omniverse-nucleus.svc.cluster.local"
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "all"
+          ports:
+            - name: webrtc
+              containerPort: 49100
+              protocol: TCP
+            - name: livestream
+              containerPort: 8011
+              protocol: TCP
+            - name: kit-app
+              containerPort: 8211
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 2
+              memory: 8Gi
+              nvidia.com/gpu: 1
+            limits:
+              cpu: 8
+              memory: 24Gi
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: cache
+              mountPath: /root/.cache/ov
+              subPath: cache
+            - name: cache
+              mountPath: /root/.local/share/ov/data
+              subPath: data
+            - name: cache
+              mountPath: /root/.nvidia-omniverse
+              subPath: nvidia-omniverse
+            - name: cache
+              mountPath: /root/Documents
+              subPath: documents
+            - name: logs
+              mountPath: /root/.nvidia-omniverse/logs
+            - name: logs
+              mountPath: /isaac-sim/kit/logs
+              subPath: kit-logs
+            - name: tmp
+              mountPath: /tmp
+          # Rendering + asset compile on first cold-start can take 5-10 minutes
+          # before Kit app accepts connections. Wide initial-delay tolerances.
+          readinessProbe:
+            tcpSocket:
+              port: livestream
+            initialDelaySeconds: 120
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 40
+          livenessProbe:
+            tcpSocket:
+              port: livestream
+            initialDelaySeconds: 600
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: isaac-sim-cache
+        - name: logs
+          persistentVolumeClaim:
+            claimName: isaac-sim-logs
+        - name: tmp
+          emptyDir:
+            sizeLimit: 10Gi

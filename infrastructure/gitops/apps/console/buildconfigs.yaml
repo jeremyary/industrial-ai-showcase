@@ -1,0 +1,58 @@
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: showcase-console-backend
+  namespace: fleet-ops
+  labels:
+    app: showcase-console-backend
+    phase: phase-1
+spec:
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: console/backend/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: showcase-console-backend:latest
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+  triggers: []
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: showcase-console-frontend
+  namespace: fleet-ops
+  labels:
+    app: showcase-console-frontend
+    phase: phase-1
+spec:
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: console/frontend/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: showcase-console-frontend:latest
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+  triggers: []

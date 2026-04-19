@@ -1,8 +1,12 @@
 # 04 — Phased Plan
 
-Five phases, ordered by dependency rather than calendar time. Each phase ends with a demoable state and a sales-enablement artifact. Phases are not expected to overlap except where noted.
+Five pre-launch phases plus a formal post-launch iteration bucket. Each pre-launch phase ends in a demoable state and at least one sales-enablement artifact. The three demo scripts in `demos/` are the scope gates: Phase 1 delivers what the 5-min script needs, Phase 2 delivers the 20-min, Phase 3 delivers the 60-min. Nothing lands in a phase that doesn't earn its way into one of those three scripts or explicitly support them.
+
+Phase 5 is new. It exists because the showcase is a living artifact — it goes public with what Phases 0–4 produce, and it keeps getting better afterward. Items that matter for long-term credibility but don't gate a demo land there.
 
 ## Phase 0 — Foundation
+
+**Status**: complete as of Session 15 close (2026-04-18).
 
 **Goal**: both clusters (OSD hub + self-managed companion) are fit for purpose. GitOps, operators, observability, storage, security baseline, and cross-cluster registration are all in place. Nothing application-level yet.
 
@@ -11,347 +15,287 @@ Five phases, ordered by dependency rather than calendar time. Each phase ends wi
 - Existing Nucleus deployment is identified and documented.
 - NVIDIA GPU Operator is already installed on OSD hub (pre-existing).
 - Red Hat OpenShift AI 3.4 is already installed on OSD hub (pre-existing).
-- Companion cluster host is selected (GMKTec Evo-X2, ORIGIN PC, or dedicated lab box — see ADR-017).
+- Companion cluster host is selected (per ADR-017).
 - Git repository is initialized following `docs/06-repo-structure.md`.
 
 **Work breakdown**
 
-1. **Hub (OSD) validation and documentation**
-   - Document hardware inventory, node labels, topology. Capture exact OSD version and MachinePool instance families in `infrastructure/baseline/osd-hub-state.md`.
-   - Confirm the existing GFD labels on GPU nodes via `oc get nodes -l nvidia.com/gpu.present=true -o json | jq '.items[].metadata.labels'`. Capture the exact `nvidia.com/gpu.product` values (expected: `NVIDIA-L40S` and `NVIDIA-L4` — confirm exact strings). No custom labels are added; this is verification only.
-   - Verify existing NVIDIA GPU Operator ClusterPolicy covers both L40S and L4; document driver versions.
-   - Verify RHOAI 3.4.0 EA1 DataScienceCluster state; confirm component enablement (trainer is enabled per ADR-020 once drafted; spark is disabled per ADR-021 once drafted).
-   - Smoke test: run a Job requesting `nvidia.com/gpu: 1` with `nodeSelector: nvidia.com/gpu.product=NVIDIA-L40S`, confirm it schedules on an L40S node and `nvidia-smi` reports correctly. Repeat for L4.
-   - Check whether **OpenShift Virtualization** is available/installable on this OSD instance — document the finding. This answers a key open question in the component catalog for entry #4.
+1. **Hub (OSD) validation and documentation** — hardware inventory, GFD label confirmation (`nvidia.com/gpu.product`), GPU Operator ClusterPolicy verification, RHOAI 3.4 EA1 DataScienceCluster state confirmation, GPU scheduling smoke tests, OpenShift Virtualization availability check.
+2. **Companion cluster provisioning** — self-managed OpenShift on the selected companion host, MachineConfig STIG baseline, FIPS mode where applicable, GPU Operator on companion if GPU present, OpenShift Virtualization (HyperConverged CR), state captured in `infrastructure/baseline/companion-state.md`.
+3. **Operator installs via OpenShift GitOps bootstrap** — NFD, ODF (or delta to SRE-provided StorageClasses), Pipelines, Service Mesh, Logging (Loki), OpenTelemetry + Tempo, Grafana, CloudNativePG, ACM (hub), AAP, AMQ Streams operator.
+4. **GitOps skeleton** — Argo CD installed, ApplicationSet pattern established, cluster dirs `clusters/hub/`, `clusters/companion/`, `clusters/spoke-a/` and `clusters/spoke-b/` scaffolded for Phase 2.
+5. **Security baseline** — Cosign keys, `policy.sigstore.dev` admission (warn on hub, enforce on companion), default-deny NetworkPolicy, least-privilege SCCs, internal registry on both clusters.
+6. **Observability baseline** — user-workload monitoring on OSD, Thanos federation (hub↔companion, spokes added Phase 2), Grafana dashboards including GPU-class allocation.
+7. **Multi-cluster registration** — ACM on OSD registers companion; cross-cluster Argo reconciliation validated.
+8. **Documentation** — prerequisites, cluster-setup, gitops topology README, baseline state docs.
 
-2. **Companion cluster provisioning**
-   - Install self-managed OpenShift on the selected companion host (per OD-8; default path is GMKTec Evo-X2 with SNO).
-   - Apply MachineConfig baseline: at minimum the STIG-aligned profile; FIPS-mode toggle if companion host supports it.
-   - Install GPU Operator on companion if NVIDIA GPU present on the chosen companion host.
-   - Install OpenShift Virtualization operator + HyperConverged CR on companion (unless OSD handles this — see item 1).
-   - Document companion state in `infrastructure/baseline/companion-state.md`.
+**Exit criteria**: every installed operator on both clusters healthy and Git-reconciled; DCGM exporter shows all GPUs in Grafana grouped by `nvidia.com/gpu.product`; test Jobs schedule correctly on both L40S and L4 classes; OpenShift Virt availability answered and documented; ACM cross-cluster reconciliation working; STIG baseline + FIPS status documented on companion.
 
-3. **Operator installs via OpenShift GitOps bootstrap (on OSD hub unless noted)**
-   - Validate Node Feature Discovery is present (pre-existing alongside GPU Operator).
-   - OpenShift Data Foundation — install if not present; otherwise use SRE-provided StorageClasses and note the delta.
-   - OpenShift Pipelines (Tekton).
-   - OpenShift Service Mesh v2 (control plane in `istio-system`).
-   - OpenShift Logging (Loki) + LokiStack.
-   - OpenTelemetry Operator + Tempo Operator.
-   - Grafana Operator.
-   - CloudNativePG.
-   - Red Hat Advanced Cluster Management (hub-only install on OSD).
-   - Ansible Automation Platform.
-   - Streams for Apache Kafka (AMQ Streams) operator (installed in Phase 0; Kafka clusters instantiated in Phase 1).
-
-4. **GitOps skeleton**
-   - Argo CD installed via OperatorHub, targeting this repo's `infrastructure/gitops/` root.
-   - ApplicationSet pattern established: one ApplicationSet per layer, with environment overlays.
-   - Cluster directory pattern: `clusters/hub/`, `clusters/companion/`, `clusters/spoke-a/` (Phase 2), `clusters/spoke-b/` (Phase 2).
-   - Root Applications defined for each of the above operators, reconciling their CRs.
-
-5. **Security baseline**
-   - **Hub (OSD, cluster-admin)**: Cosign keys generated (private in Vault; public in repo). `policy.sigstore.dev` admission controller installed in warn mode (graduates to enforce in Phase 1) — cluster-admin allows direct installation on OSD. Default deny-all NetworkPolicy in every workload namespace; allowlists per workload. Custom SCCs for workloads requiring them, reviewed for least privilege.
-   - **Companion (self-managed)**: MachineConfig STIG profile applied. FIPS mode validated if applicable to companion host. `policy.sigstore.dev` in enforce mode — the companion-side baseline demonstrates the full recommended customer-deployable pattern where nothing is delegated to SRE.
-   - Internal image registry: OpenShift internal registry on both clusters; quay.io mirror credentials via image pull secrets.
-
-6. **Observability baseline**
-   - User-workload monitoring enabled on OSD (cluster monitoring is SRE-managed; user workloads go through the user-workload-monitoring stack).
-   - Thanos federation for cross-cluster metrics (hub ↔ companion at Phase 0; hub ↔ spokes added Phase 2).
-   - Default Grafana instance with at minimum: cluster health, GPU utilization (DCGM), node health dashboards, and a "GPU class allocation" panel showing which workloads occupy which `nvidia.com/gpu.product` class.
-
-7. **Multi-cluster registration**
-   - ACM on OSD registers the companion cluster as a managed cluster.
-   - Verify GitOps reconciliation reaches companion workloads via ACM's ApplicationSet delivery pattern.
-
-8. **Documentation deliverables**
-   - `docs/deployment/prerequisites.md` — hardware/software required for hub + companion.
-   - `docs/deployment/cluster-setup.md` — the steps from pre-existing-OSD through companion provisioning to Phase 0 complete.
-   - `infrastructure/gitops/README.md` — the Argo CD topology.
-   - `infrastructure/baseline/osd-hub-state.md` and `companion-state.md` — living documents tracking actual installed versions.
-
-**Exit criteria**
-- Every installed operator on hub + companion is healthy and reconciled from Git.
-- DCGM exporter shows all GPUs visible in Grafana, grouped by `nvidia.com/gpu.product`.
-- A test Job using `nvidia.com/gpu: 1` and the appropriate `nvidia.com/gpu.product` nodeSelector runs successfully on both an L40S and an L4 node and reports the correct device via `nvidia-smi`.
-- OpenShift Virtualization availability question for the OSD instance is answered and documented.
-- ACM on OSD has registered the companion cluster; cross-cluster Argo CD Application reconciles to companion.
-- A developer can bring up a clone of hub state using only what's in Git (plus documented out-of-band steps for secrets and any SRE-ticketed infrastructure provisioning).
-- Companion cluster has MachineConfig STIG profile applied; FIPS-mode status documented.
-
-**Phase 0 demo / artifact**
-- Not a customer-facing demo. An internal one-pager: "OpenShift as the foundation for NVIDIA Physical AI — OSD hub + self-managed companion, L40S + L4 GPU pools, ready for workloads." Useful for early internal alignment conversations with field teams.
+**Phase 0 artifact**: internal one-pager — "OpenShift as the substrate for NVIDIA Physical AI." Not customer-facing. For internal field alignment. `docs/sales-enablement/one-pagers/phase-0-foundation.md`.
 
 ---
 
-## Phase 1 — Mega Core
+## Phase 1 — 5-minute Warehouse Baseline
 
-**Goal**: the NVIDIA Mega blueprint is implemented on OpenShift in its core shape. The operational inference loop (Loop 1) works end-to-end. A first scripted demo is possible. The Showcase Console exists in skeletal form.
+**Goal**: the operational inference loop runs end-to-end, driven by the `demos/warehouse-baseline/script.md` narrative. A Red Hat seller can open the Showcase Console in novice mode and walk Archetype A (the "what is industrial physical AI?" audience) through a 5-minute scripted loop. Everything in this phase is justified by a beat in that script.
 
 **Entry criteria**
 - Phase 0 complete.
 - Nucleus operational and accessible from new namespaces.
+- `demos/warehouse-baseline/script.md` signed off as the scope gate.
 
 **Work breakdown**
 
-0. **RHOAI MLflow enablement and configuration**
-   - Inspect the existing RHOAI 3.4 EA1 DataScienceCluster on the hub; confirm MLflow component state.
-   - Enable the MLflow component in the DSC if not already active. The shipped container is `rhoai/odh-mlflow-rhel9:v3.4.0-ea.1` (per ADR-015).
-   - Configure the MLflow backend: Postgres via CloudNativePG in a dedicated namespace; S3-compatible artifact store (ODF RGW or OSD-equivalent).
-   - Establish the `workloads/common/python-lib/tracking/` abstraction so downstream code is insulated from RHOAI-internal MLflow details.
-   - Document the final enabled configuration in `workloads/mlflow/README.md`.
+1. **RHOAI MLflow enablement and configuration** — backend Postgres (CNPG), S3 artifact store (ODF RGW), `workloads/common/python-lib/tracking/` abstraction so downstream code is insulated from RHOAI-internal details. Needed as a hub for model artifacts even though training lives in Phase 2.
 
-1. **Nucleus validation and codification**
-   - Formalize the existing Nucleus deployment as a chart in `workloads/nucleus/`.
-   - Argo CD syncs Nucleus state henceforth (stop hand-managed drift).
-   - Expose Nucleus as a Service Mesh member; enforce mTLS for consumers.
+2. **Nucleus validation and codification** — formalize the pre-existing deployment as a chart in `workloads/nucleus/`, Argo-reconciled. Service Mesh membership with mTLS enforcement for consumers.
 
-2. **USD Search API**
-   - Deploy NVIDIA's USD Search API Helm chart to a dedicated namespace.
-   - Configure backend against Nucleus.
-   - Index an initial set of assets (warehouse scene, Nova Carter, Unitree G1, sensor library).
+3. **Isaac Sim headless runner** — image built on `nvcr.io/nvidia/isaac-sim` with the chosen SimReady Warehouse scene + Nova Carter AMR + Unitree G1. Cosign-signed, SBOM generated, deployed as a `Deployment` on L40S for the live sim pod. Scripted deterministic scenarios (no random events) so the 5-min demo is reproducible.
 
-3. **Isaac Sim headless runner**
-   - Build and publish an Isaac Sim 6.0 runner container image based on `nvcr.io/nvidia/isaac-sim`, baked with custom startup scripts and the warehouse scenario pack.
-   - Sign the image (Cosign). Generate SBOM.
-   - Deploy as a Deployment (not Job) for the "live demo sim" pod. Another pattern (Job-based) arrives in Phase 2 for training.
+4. **Kit App Streaming** — NVIDIA Kit App Streaming Helm charts deployed; a minimal "Factory Viewer" Kit app loads the warehouse USD scene from Nucleus and streams to the Console. Exposed via Route with WebRTC signaling. Offline-fallback recording cached in the Console asset bundle per the 5-min script's hard constraints.
 
-4. **Kit App Streaming**
-   - Deploy the NVIDIA Kit App Streaming Helm charts.
-   - Build a minimal Kit app ("Factory Viewer") that loads the warehouse USD scene from Nucleus and streams to web clients.
-   - Expose via Route (WebRTC signaling + streaming).
+5. **Kafka (AMQ Streams) core topics** — 3-broker cluster with topics `fleet.events`, `fleet.missions`, `fleet.telemetry`, `fleet.ops.events`. Schema Registry deployed with Avro schemas from `workloads/fleet-manager/schemas/`.
 
-5. **Kafka (AMQ Streams)**
-   - Deploy 3-broker Kafka cluster.
-   - Define topics: `fleet.events`, `fleet.missions`, `fleet.telemetry`, `fleet.ops.events`.
-   - Schema Registry deployed; Avro schemas from `workloads/fleet-manager/schemas/`.
+6. **Camera event adapter** — **Cosmos Reason 2** deployed on L4 as a KServe ServingRuntime, paired with a custom **RTSP→Kafka adapter** that pulls simulated camera frames from Isaac Sim, submits them to Cosmos Reason for scene reasoning, and publishes structured events to `fleet.events`. This replaces the earlier Metropolis VSS plan per the demo-gate audit (full VSS 8-GPU pipeline is not justified by any beat in any of the three demo scripts).
 
-6. **Metropolis VSS**
-   - Deploy the VSS blueprint Helm charts.
-   - Configure input: RTSP streams from the Isaac Sim live sim's simulated cameras.
-   - Configure output: Kafka `fleet.events` topic.
+7. **Fleet Manager v1** — Python + FastAPI. Consumes `fleet.events`, emits `fleet.missions`. Rule-based decisioning only at this stage (LangGraph upgrade lands in Phase 3 per `docs/07-decisions.md` ADR-005). Postgres state.
 
-7. **Fleet Manager (v1)**
-   - Python + FastAPI service. Consumes `fleet.events`, emits `fleet.missions`.
-   - Decision policy for v1 is rule-based (not agentic yet). Upgrades to LangGraph-based in Phase 3.
-   - Persist state to Postgres.
+8. **Mission Dispatcher v1 (companion)** — Python service running on the companion cluster per ADR-025. Consumes `fleet.missions`, calls the local VLA endpoint via gRPC, emits execution events to `fleet.ops.events`.
 
-8. **Mission Dispatcher (v1)**
-   - Python service. Consumes `fleet.missions`, calls robot-brain endpoints via gRPC.
-   - Emits execution events to `fleet.ops.events`.
+9. **WMS Stub** — scripted mission-stream generator on the hub driving deterministic demo scenarios (the 5-min's "aisle-3 obstruction" beat is one of these).
 
-9. **WMS Stub**
-   - Simple mock service emitting scripted mission streams; used to drive deterministic demo scenarios.
+10. **Robot Brain serving v1 — OpenVLA primary, host-native on companion node (per ADR-026)** — for Phase 1 the VLA runtime runs as a podman systemd unit on the companion's Fedora 43 host, *outside* the SNO cluster. Runtime is PyTorch + transformers + ROCm (HIP backend) wrapping OpenVLA's reference `deploy.py` REST server. Exposed on the host bridge network; the in-cluster Mission Dispatcher (item 8) HTTP-calls it. **Not** a KServe InferenceService in Phase 1 — rationale in ADR-026: AMD consumer/APU hardware lacks first-class NVIDIA-parity operator coverage on OpenShift, vLLM upstream parked OpenVLA support as "not planned," and RHCOS 5.14 inside the SNO VM can't reach the host's iGPU. The host-level serving runtime is described in `workloads/vla-serving-host/` and provisioned via Ansible, separate from the cluster GitOps. Pluggable alternatives: **SmolVLA-450M** and **π0** (Physical Intelligence open weights) pre-provisioned for the 60-min live-swap beat. **GR00T N1.7** slotted as an optional swap-in that requires the customer's own NGC entitlement (not active by default). KServe + custom-predictor pod-native serving returns as a parallel Phase-3 path when the Jetson Thor edge arrives (see item 13 below and ADR-026's Thor-arrival notes).
 
-10. **Robot Brain serving (v1 — GR00T primary)**
-    - vLLM runtime deployed as a KServe ServingRuntime.
-    - GR00T N1.7 served as an InferenceService with a custom preprocessing handler for robot observations.
-    - Pi-0 and OpenVLA configured as alternative InferenceService definitions but not active by default.
+11. **Showcase Console (skeletal)** — React + TypeScript front, Fastify + TypeScript back. Stage view with Kit viewport, event-trace right panel, two-cluster topology dots, three closing teaser pills ("Retrain & promote", "Multi-site rollout", "Agentic operator"). Audience-mode toggle present but all modes show the same content until Phase 2 enriches them. Offline-fallback mode detects cluster unavailability and plays the cached recording seamlessly.
 
-11. **Showcase Console (skeletal)**
-    - React + TypeScript front-end, Fastify + TypeScript back-end.
-    - Embeds the Kit App Streaming viewport.
-    - Shows a single scripted demo path: "Warehouse — Baseline."
-    - Audience-mode toggle present in UI but all modes currently show the same content (enriched in later phases).
-    - Has a dashboard panel pulling from the sales-view Grafana dashboard.
+12. **Cross-layer wiring: SNO pod ↔ host VLA** — podman network bridge + firewalld rule on the Fedora host permitting the SNO CNI range to reach the host's bridge IP on the VLA endpoint port. Mission Dispatcher's VLA client config points at the bridge-IP endpoint URL; health-check + retry + circuit-breaker semantics on the client. Documented in `workloads/vla-serving-host/README.md` under "bridge-network wiring." Honestly named in the narration for the 5-min and 20-min scripts per ADR-026.
 
-12. **First scripted demo**
-    - "Warehouse — Baseline" scenario pack: 5-minute narrated walk-through, with a recording cached locally for offline fallback.
-    - Script documented in `demos/warehouse-baseline/script.md`.
+13. **5-min demo lands** — `demos/warehouse-baseline/script.md` runs end-to-end live on the reference cluster; the same flow plays cleanly from the offline-fallback recording.
+
+**Cut from Phase 1 (story-driven scope gate)**: USD Search API (no downstream consumer in any of the three scripts); Metropolis VSS full pipeline (replaced by Cosmos Reason on a single L4 — the narrow "event from camera" job is the only beat we need, and the 8-GPU VSS footprint doesn't justify itself); pod-native VLA serving on the companion cluster (deferred to Phase 3 when Jetson Thor arrives — see ADR-026).
+
+**Jetson Thor (ordered, Phase 3/4 materialization)**: a Jetson AGX Thor Developer Kit has been ordered and will land the second edge pattern when it arrives (MicroShift + NVIDIA GPU Operator + KServe + vLLM/transformers with CUDA-native serving). Does not gate Phase 1. Phase 3's 60-min Segment-4 live-swap beat grows to *"same open VLA serving on the AMD edge host, then on the Thor edge pod"* once the hardware is online.
 
 **Exit criteria**
-- The operational inference loop (Loop 1) runs end-to-end from simulated camera through VSS through Fleet Manager through GR00T-served robot brain through a sim robot.
-- A sales rep can open the Showcase Console, click "Warehouse — Baseline," and walk through a 5-minute demo.
-- The reference is deployable in its current shape from scratch using the documented GitOps bootstrap.
+- The 5-minute scripted loop (camera event → Cosmos Reason → Kafka → Fleet Manager → Mission Dispatcher on companion → OpenVLA → sim robot action → telemetry back to hub) runs end-to-end on the live cluster.
+- A seller can open the Showcase Console, click "Warehouse — Baseline," and walk through the 5-minute script without touching anything outside the Console.
+- Offline-fallback recording is seamless — a viewer can't tell it's pre-recorded.
+- The reference is GitOps-deployable from scratch using the documented bootstrap.
 
-**Phase 1 demo / artifact**
-- "Warehouse — Baseline" 5-minute demo (live + recorded).
-- Architecture poster showing Mega components mapped onto Red Hat substrate, with Phase-1 components highlighted.
-- One-pager: "Red Hat implementation of NVIDIA Mega — what we've built."
+**Phase 1 artifact**
+- `demos/warehouse-baseline/script.md` executing live and recorded.
+- `docs/sales-enablement/one-pagers/phase-1-warehouse-baseline.md` — the 5-min talk track.
+- Architecture poster showing Phase-1 components on Red Hat substrate.
 
 ---
 
-## Phase 2 — MLOps, Edge Loop, and Multi-Site
+## Phase 2 — 20-minute Architecture + Fleet Operations
 
-**Goal**: the policy training/promotion loop (Loop 2) works end-to-end. The edge layer exists and can receive deployments from ACM. Multi-site federation with at least two spokes is demonstrable.
+**Goal**: the policy training/promotion loop and fleet-operations story work end-to-end, driven by `demos/20-min-architecture/script.md`. A Red Hat seller + field SA can walk Archetype B (the "we're evaluating or piloting" audience) through a 20-minute four-segment walkthrough. Multi-site federation is live (hub + companion + at least one additional spoke). The brownfield integration story is a real beat, not a sentence.
+
+The persona-review synthesis in `demos/review-synthesis.md` identified six convergent gaps in the 20-min demo. Phase 2 absorbs the tractable ones as first-class items.
 
 **Entry criteria**
-- Phase 1 complete.
-- RHOAI 3.4 MLflow availability resolved per ADR-015 (either enabled in-product or a standalone fallback running).
+- Phase 1 complete — the 5-min demo runs reliably.
+- RHOAI MLflow operational from Phase 1 item 1.
+- Scene-pack decision made (Phase 2 item 1 below, research gate).
 
 **Work breakdown**
 
-1. **OpenShift AI configuration for MLOps workflows**
-   - DataScienceCluster CR already present (Phase 0 validated). Phase 1 enabled MLflow if needed.
-   - Configure MLflow backend: Postgres (CNPG) + S3 artifact store (ODF or OSD-equivalent S3).
-   - Configure model registry.
-   - Build notebook server image with Isaac Lab dependencies.
+1. **Scene-pack decision (research gate, before other Phase 2 work starts)** — inventory what SimReady publicly ships beyond the Warehouse Pack. Specifically: is there a discrete-assembly or process/packaging scene usable without authoring? If yes, Phase 2 commits to shipping a second scene pack sharing the 5-min script skeleton; the Isaac Sim runner becomes scene-configurable via ConfigMap and the Console novice mode gains a scene selector. If no, Phase 2 explicitly commits to warehouse-only and Scene Pack #2 moves to Phase 5. **Output**: a decision ADR + an entry in `assets/README.md` listing what's in or out. Addresses review Gap 1 (Linda, Marcus, Priya convergent: warehouse-only pigeonholes the field).
 
-2. **Isaac Lab training pipeline**
-   - Kubeflow Pipeline that:
-     - Accepts a scenario manifest + hyperparameters
-     - Launches Isaac Lab training as a parallel Job set
-     - Streams metrics to MLflow
-     - Produces a candidate policy checkpoint
-     - Runs evaluation against a curated scenario set
-     - Registers in MLflow Model Registry with full lineage
+2. **Brownfield-integration beat (20-min Segment 4 promoted)** — what is today a 30-second mention of "the companion has a legacy PLC gateway VM" becomes a real 3–5 minute beat:
+   - **KubeVirt VM on companion**: one Windows or legacy-Linux VM representing a factory-floor PLC/HMI gateway. Boots clean, exposed only to an internal factory-network NetworkPolicy segment, visible in the Console Architecture view side panel.
+   - **MES-stub service** on the hub: FastAPI service emitting SAP-PP/DS-shaped order messages into a Kafka `mes.orders` topic. Fleet Manager consumes `mes.orders` and translates to mission scheduling — the demo beat shows "your existing MES drives the AI decisioning, it doesn't replace it."
+   - **Purdue-model overlay** in the Console Architecture view — Level 1 (PLC VLAN), Level 2 (HMI/SCADA segment), Level 3 (MES/site-ops), Level 4 (enterprise/hub) — with the OpenShift deployment clearly sitting *alongside* existing L1/L2 rather than replacing it.
+   - Addresses review Gap 3 (Linda's #1 ask: "no bridge from my current stack to this one"; Priya confirmed "don't let this get cut").
 
-3. **Policy serving update flow**
-   - Kustomize overlay generator that produces a new serving InferenceService manifest from an MLflow model URI.
-   - PR-based promotion workflow; Argo CD reconciles on merge.
-   - Rollback via `git revert` documented.
+3. **Isaac Lab training pipeline** — Kubeflow Pipeline: scenario manifest → parallel Isaac Lab training Jobs → MLflow metrics streaming → candidate policy checkpoint → evaluation against scripted scenario suite → MLflow Model Registry with full lineage (training data, scenarios, metrics, approver). The 20-min Segment 2 "training a new policy with lineage" beat.
 
-4. **Edge layer: MicroShift targets**
-   - Ansible playbooks for provisioning MicroShift on x86 VMs (representing edge) or Jetson hardware if available.
-   - Bootable-container image build: one image signed once, deploys identically to hub workload or edge.
-   - GitOps spoke pattern: edge nodes register to ACM, receive workloads via ManifestWork.
+4. **Cosmos Transfer 2.5 (limited)** — one variation pass on existing sim frames feeding a scenario manifest. Not the full synthetic-data-factory pipeline (that's Phase 3). Enough to demonstrate "this policy knows which synthetic variations trained it" in Lineage view.
 
-5. **ACM multi-site**
-   - Register at least two spoke clusters (SNO instances).
-   - Define a Mega policy that federates: Nucleus read-only replica at each spoke, local Fleet Manager slice, local VSS deployment scaled to spoke size.
-   - Policy-based rollout of a new robot-brain version to Spoke A first, observe, promote to Spoke B.
+5. **Policy serving update flow + GitOps rollout** — Kustomize overlay generator produces an InferenceService manifest from an MLflow model URI; PR merges trigger Argo sync; rollout order hub → spoke-a → spoke-b is defined in `infrastructure/gitops/`; `git revert` is the rollback.
 
-6. **Enhanced observability**
-   - MLflow integration with the Showcase Console data-scientist view.
-   - Multi-site dashboards (Thanos federation).
-   - OpenTelemetry traces spanning hub → spoke for mission round-trips.
+6. **Auto-rollback on anomaly** — the 20-min Segment 3 "rollback in under N seconds, robots never stopped" beat. Anomaly-score threshold on telemetry triggers an automatic `git revert` of the policy-version commit; Argo syncs back to last-known-good. **The N-second claim must be measured** (not aspirational) on the actual multi-site topology and scripted to match reality (see performance-envelope item below).
 
-7. **Showcase Console grows**
-   - Audience modes now differentiate: novice shows simplified, expert shows architecture overlay and lineage panels.
-   - New scripted path: "Warehouse — New Policy Rollout" (20-minute demo).
-   - New scripted path: "Warehouse — Bottleneck and Recovery" (20-minute demo).
+7. **Second spoke cluster (Factory B)** — provisioned via ACM per the existing `clusters/spoke-b/` scaffolding. Same GitOps patterns as companion. Cross-spoke Kafka MirrorMaker or equivalent for mission flow to multiple factories.
 
-8. **Second scripted demo: 20-minute architecture walkthrough**
-   - Script documented in `demos/20-min-architecture/script.md`.
+8. **Edge layer: MicroShift target (optional Phase 2 / required Phase 4)** — Ansible playbooks for MicroShift provisioning on x86 VMs or Jetson. Bootable-container image: one image signed once, deployable identically to hub workload, companion, spoke, or edge. In Phase 2 the "edge" target may be a MicroShift-in-a-VM stand-in; physical Jetson is Phase 4.
+
+9. **ACM RBAC-based policy rollout** — the PR-merge-to-Argo-sync-to-spoke path including the anomaly-triggered rollback beat. Policies federated across spokes.
+
+10. **Fleet-scale reference document (sidecar, not a demo)** — 5–10 pages. Operating math at 10/40 sites: ACM fan-out characteristics, Kafka partitioning strategy, hub control-plane sizing, spoke cluster footprint at the edge, bandwidth between hub and spoke under steady-state and during policy rollout, failure-mode behaviors (hub loss, partial spoke loss, regional outage), GitOps blast-radius analysis. Lands at `docs/sales-enablement/fleet-scale-operating-math.md`. Addresses review Gap 2 (Marcus: "I have 40 sites"; Aiko: "show me where your stack breaks").
+
+11. **Security documentation pass** — name the STIG baseline (`ocp4-stig-node` profile version), list FIPS 140-3 validated crypto status for every component in the robot command path (RHCOS, OpenSSL, Go crypto, vLLM, KServe, Kafka TLS, Llama Stack when it lands), state the SLSA level targeted for image provenance, disposition every STIG FAIL with policy rationale. Document form, no new implementation. Lands at `docs/sales-enablement/security-posture.md`. Addresses review Gap 6 (Jim: "an SSP false-statement finding ends the program").
+
+12. **HIL Approval Drawer Design Spec (preparatory for Phase 3)** — an ADR + design doc specifying exactly what the approval drawer in the Console shows when an agentic tool call requires HIL approval: the proposed diff, blast-radius analysis, MCP tool-call trace (which tools were called read-only to build context), guardrail-check outcomes, TrustyAI eval score of proposed policy vs. incumbent, what's writeable to an immutable audit store, CAC/PIV identity binding requirements. Ships end of Phase 2, implementation lands in Phase 3. Addresses review Gap 4 (Aiko's deal-killer: "that's where the demo lives or dies — don't leave this as a TBD").
+
+13. **Performance envelope doc v1** — measure and publish real numbers for the hub+companion+Factory-B topology: end-to-end event-to-mission latency p50/p99, rollback elapsed time (actual, not aspirational), VLA inference p99, mission round-trip for multi-site deployments. Even small numbers beat "under 90 seconds" aspirational claims. Lands at `docs/sales-enablement/performance-envelope.md`. Addresses review Gap 5 (Aiko: "The script has zero numbers").
+
+14. **Enhanced observability** — MLflow surfaces in Console data-scientist/engineer mode; multi-site dashboards (Thanos federation); OpenTelemetry traces spanning hub → spoke for mission round-trips (this powers the 5-min's "trace every step" promise).
+
+15. **Showcase Console grows** — Architecture view, Lineage view, Fleet view (per-site version pills + anomaly sparklines), and the scene selector from item 1 if Scene Pack #2 is in. Audience modes differentiate: novice simplified, evaluator shows Fleet view, expert shows Architecture + Lineage overlay.
+
+16. **20-min demo lands** — `demos/20-min-architecture/script.md` runs end-to-end live on the reference cluster; the recorded fallback has timed rollback numbers baked in per item 13.
 
 **Exit criteria**
-- A policy trained in Isaac Lab can be promoted through MLflow and deployed to the hub + two spokes via GitOps without any manual kubectl commands.
-- Loop 2 is demonstrable live.
-- The Showcase Console drives a 20-minute architecture-level conversation cleanly.
-- The edge layer receives a robot-brain serving image that originated from the hub build pipeline.
+- The 20-min scripted flow runs end-to-end live on hub + companion + spoke-b.
+- The rollback beat uses a real `git revert` and a real Argo sync; the elapsed-time number quoted in the script matches the measured p50 in the performance-envelope doc.
+- Brownfield beat runs end-to-end: MES-stub emits orders, Fleet Manager consumes them, KubeVirt PLC-gateway VM is visible alongside container pods in the Architecture view.
+- Fleet-scale operating-math doc is published and referenced from the Console's "how this scales" panel.
+- HIL Approval Drawer Design Spec is merged as an ADR before Phase 3 starts.
+- Scene-pack decision is made and documented.
 
-**Phase 2 demo / artifact**
-- 20-minute architecture demo.
-- A recorded "fully operationalized MLOps for physical AI" reel (~8 minutes) suitable for YouTube/LinkedIn.
-- Detailed architecture white paper suitable for sharing with prospective customers (drawn from the docs in this repo, with an executive summary).
+**Phase 2 artifacts**
+- `demos/20-min-architecture/script.md` live + recorded.
+- `docs/sales-enablement/fleet-scale-operating-math.md`.
+- `docs/sales-enablement/security-posture.md`.
+- `docs/sales-enablement/performance-envelope.md` v1.
+- HIL Approval Drawer Design Spec ADR.
+- `docs/sales-enablement/one-pagers/phase-2-architecture-walkthrough.md`.
+- Recorded "fully operationalized MLOps + fleet rollback" reel (~8 minutes) for public channels.
 
 ---
 
-## Phase 3 — Agentic Orchestration and Synthetic Data Factory
+## Phase 3 — 60-minute Technical Deep Dive
 
-**Goal**: the agentic orchestration loop (Loop 4) works end-to-end. Synthetic data generation via Cosmos is operational and integrated with the training pipeline.
+**Goal**: the agentic orchestration loop and synthetic-data story work end-to-end, driven by `demos/60-min-deep-dive/script.md`. Archetype C (the Foxconn/Siemens-tier expert audience) gets a live, honest, engineer-to-engineer deep dive. The HIL governance story is substantive, not demo theater. The OT security story produces real artifacts, not gestures.
 
 **Entry criteria**
-- Phase 2 complete.
-- Cosmos NIMs are accessible (NGC licensing resolved).
+- Phase 2 complete. The 20-min demo runs cleanly.
+- HIL Approval Drawer Design Spec (Phase 2 item 12) is merged.
+- Cosmos NIMs accessible (NGC entitlement resolved — see `docs/licensing-gates.md`).
 
 **Work breakdown**
 
-1. **Cosmos Predict 2.5 NIM deployment**
-   - As a KServe-wrapped Deployment on the hub.
-   - Document GPU scheduling (this is a large model; coordinate with live-demo GPU allocation — see `docs/08-gpu-resource-planning.md`).
+1. **Cosmos Predict 2.5 NIM deployment — positioned as pre-dispatch admission check**, not just a training aid. The differentiated beat per the 60-min Segment 1: a proposed mission is handed to Cosmos Predict as a world-model simulation *before* it's dispatched; if the predicted rollout violates safety/latency envelopes, the mission is rejected at the Fleet Manager boundary rather than sent to the robot. Aiko's persona review flagged this framing as one of only two non-table-stakes ideas in the 60-min. KServe-wrapped Deployment on L40S. GPU scheduling coordinates with live-demo allocation per `docs/08-gpu-resource-planning.md`.
 
-2. **Cosmos Transfer NIM deployment**
-   - Same pattern; generally not concurrent with Cosmos Predict in the reference footprint.
+2. **Cosmos Transfer NIM deployment (full pipeline)** — same pattern as Phase 2's limited deployment but now the full synthetic-data factory: Predict → Transfer → scenario manifest generation → Nucleus upload → MLflow dataset registry. Not concurrent with Cosmos Predict in the reference footprint (GPU budget).
 
-3. **Synthetic-data pipeline**
-   - Kubeflow Pipeline that orchestrates Cosmos Predict → Cosmos Transfer → scenario manifest generation → upload to Nucleus → registration in an MLflow dataset registry.
+3. **MCP servers** — `mcp-isaac-sim`, `mcp-fleet`, `mcp-mlflow`. (`mcp-nucleus` is conditional — add only if a specific 60-min beat needs it; otherwise defer to Phase 5 to avoid padding the surface.) Each its own workload, Service Mesh secured, read-only vs. state-modifying tool classifications explicit.
 
-4. **MCP servers**
-   - `mcp-isaac-sim`: Python-based MCP server wrapping Isaac Sim control operations.
-   - `mcp-fleet`: wraps the Fleet Manager API.
-   - `mcp-mlflow`: wraps MLflow REST + model registry operations.
-   - `mcp-nucleus`: wraps Nucleus operations.
-   - Each server deployed as its own workload, secured by Service Mesh.
+4. **LangGraph agentic orchestrator** — Python + LangGraph. Agent brain is a vLLM-served model sized for L4 by default (see `docs/08-gpu-resource-planning.md`). Tool access exclusively via MCP servers. State persistence to Postgres.
 
-5. **LangGraph agentic orchestrator**
-   - Python service using LangGraph.
-   - Agent brain: vLLM-served model sized for L4 by default (see OD-5); use LLM Compressor if stronger-but-larger candidate needs to fit.
-   - Tool access exclusively via MCP servers above.
-   - State persistence to Postgres.
+5. **Llama Stack governance layer (ADR-019)** — wraps LangGraph. Read-only MCP tool calls pass through; state-modifying tool calls are routed through HIL approval via the Llama Stack Agents API. Safety guardrails + PII detection on agent inputs/outputs. TrustyAI evaluation signal wired into observability. **Critical constraint from Aiko's persona review**: Llama Stack governance is on the *GitOps / PR-open path* only, not inline in serving-time robot command flow. The governance layer cannot add latency to 10Hz+ VLA inference. This is a design invariant — violating it is a deal-killer for the Archetype-C audience.
 
-6. **Llama Stack governance layer (ADR-019)**
-   - Enable Llama Stack component in the DSC.
-   - Configure Llama Stack's Agents API to front the LangGraph orchestrator: tool calls that modify state (fleet interventions, scenario launches, model promotions) route through HIL approval; read-only tool calls bypass.
-   - Enable safety guardrails + PII detection on agent inputs and outputs.
-   - Wire TrustyAI evaluation signal into observability.
-   - Showcase Console agent panel surfaces the HIL approval UX — operator taps approve/reject before a state-modifying tool call executes.
+6. **HIL Approval Drawer implementation** — builds to the Phase 2 design spec. When a state-modifying tool call enters the HIL gate, the drawer renders: proposed diff, blast radius, MCP tool-call trace, guardrail outcomes, TrustyAI eval score vs. incumbent, CAC/PIV-bound approval that writes to an immutable audit store. The drawer is the 60-min's strongest beat per all three Archetype-C+ persona reviews — build it right.
 
-7. **Fleet Manager upgrade (v2 — hybrid)**
-   - Rule-based fast path (for standard missions) remains.
-   - Agentic path for anomaly investigation: when an event scores above an anomaly threshold, dispatch to agentic orchestrator for deeper analysis and hypothesis generation. Investigation actions that propose fleet interventions route through Llama Stack HIL.
+7. **Agent-opens-a-PR pattern** — the operator-authored design where a state-modifying agentic action results in the agent opening a pull request to `infrastructure/gitops/`, not directly calling the cluster API. The PR triggers the HIL drawer; approval merges the PR; Argo CD reconciles the change. This reframes "LLM touching OT" as "LLM participating in the review process you already trust." Flagged as the single most-differentiating beat across personas.
 
-8. **Showcase Console grows**
-   - Agentic interaction panel: natural-language command box, agent plan visualization, results panel, **HIL approval drawer** surfacing pending tool calls.
-   - New scripted path: "Ask the system — what if we added 2 more humanoids to Zone B?" (60-minute deep dive segment).
+8. **Fleet Manager v2 (hybrid)** — rule-based fast path for standard missions stays. Agentic path for anomaly investigation: events scoring above an anomaly threshold dispatch to the LangGraph orchestrator for hypothesis generation; investigation actions that propose fleet interventions route through the HIL gate + Llama Stack.
 
-9. **Third scripted demo: 60-minute technical deep dive**
-   - Script documented in `demos/60-min-deep-dive/script.md`.
-   - Includes live agent run, MLflow walkthrough, multi-site policy rollout, rollback, and security posture tour.
+9. **Security posture execution (backing the Phase 2 documentation)** — the Phase 2 security-posture doc claims things; Phase 3 surfaces them live:
+   - Real Sigstore admission rejecting a tampered artifact on-camera (the 60-min Segment 3 beat). The rejected-artifact event appears in the audit log visibly during the demo.
+   - Live Compliance Operator scan results exported during the demo, matching the Phase 2 STIG baseline; the 19 FAILs have their Phase 2 dispositions visible.
+   - `oc-mirror v2` air-gap walkthrough of the companion-side mirror registry. The script explicitly calls out that the live cluster under demo is OSD but the air-gap story runs on companion, so the viewer isn't misled.
+   - Policy-artifact provenance chain from training scenario → MLflow registered model → signed InferenceService image → admitted-at-serving. Not just the image chain — the full training→deploy chain.
+
+10. **OSCAL evidence bundle export (stretch)** — a Console feature that emits a signed bundle combining the SSP component definition + Compliance Operator results + Sigstore attestations + SBOMs + HIL approval log, OSCAL-formatted, auditor-consumable. **Stretch** means: if it's tractable with Phase-3 resources, it ships; if not, it formally moves to Phase 5 with a documented reason. Jim's persona flagged this as the single feature that moves defense-sector conversations from "interesting" to "I'd write a capability statement."
+
+11. **Showcase Console agentic panel** — natural-language command box, agent plan visualization, HIL approval drawer surfacing pending tool calls, counterfactual reasoning panel, policy-lineage view wired to provenance chain from item 9. Expert-mode depth.
+
+12. **60-min demo lands** — `demos/60-min-deep-dive/script.md` runs end-to-end live, four structurally-independent 15-min segments (synthetic-data factory, LangGraph+MCP+HIL, OT security, live VLA swap + trace + repo tour).
 
 **Exit criteria**
-- Loop 3 and Loop 4 are both demonstrable live.
-- A customer engineer can issue a natural-language question through the Showcase Console and watch the agent compose and execute a sim experiment.
-- Synthetic data produced via the pipeline can be used in a training run, and the resulting policy is traceable back to the synthetic scenarios that trained it.
+- Live agentic run: operator types a natural-language question, agent composes and executes a sim experiment, results return, any proposed state change routes through HIL.
+- Synthetic data produced via Cosmos Transfer/Predict can be consumed in an Isaac Lab training run; the resulting policy is traceable back to the synthetic scenarios that trained it and to the scenario manifests that validated it.
+- Policy-artifact provenance chain is click-navigable from Console: registered model → scenario manifest → synthetic frames → signed artifact → admission event.
+- HIL drawer behaves per its design spec.
+- Tampered-artifact rejection is live and reproducible.
 
-**Phase 3 demo / artifact**
-- 60-minute technical deep-dive demo with scripted agent runs.
-- Blog post series (3+ posts) on the Red Hat Developer blog covering: the agentic pattern, the synthetic data factory, the multi-site MLOps story.
+**Phase 3 artifacts**
+- `demos/60-min-deep-dive/script.md` live + recorded.
+- `docs/sales-enablement/one-pagers/phase-3-deep-dive.md`.
+- Blog post series (three posts minimum) on the Red Hat Developer blog: the agent-opens-a-PR pattern, the synthetic-data factory, the multi-site policy provenance chain.
+- Performance envelope doc v2 (with numbers for HIL round-trip, agentic flow, VLA hot-swap).
 
 ---
 
-## Phase 4 — Verticalization and Partner Overlays
+## Phase 4 — Verticalization and Physical Robot Integration
 
-**Goal**: the reference becomes an enablement surface for partner-specific engagements. Industry vertical scenario packs exist. The Siemens conversation can begin with real artifacts to show.
+**Goal**: the reference becomes an enablement surface for partner-specific engagements. At least two vertical scenario packs exist beyond warehouse. A physical robot integration, if hardware budget allows, demonstrates sim-to-real policy transfer as the demo peak.
 
 **Entry criteria**
 - Phase 3 complete.
-- The reference has been exercised in at least three customer-facing engagements and received feedback.
+- The reference has been exercised in at least three Archetype-B or -C customer-facing engagements and received feedback.
+- A decision has been made on physical robot hardware acquisition (Unitree G1 or alternative), or explicit deferral.
 
 **Work breakdown**
 
-1. **"Electronics Manufacturing Line" scenario pack**
-   - A new USD scene representing a surface-mount electronics line.
-   - Scenario-specific fleet manager configuration, sensors, policies.
-   - Showcase Console path for Foxconn/Pegatron-style conversations.
+1. **Vertical scenario pack #2 (whichever wasn't delivered in Phase 2)** — if Phase 2 shipped warehouse + discrete-assembly, Phase 4 adds process/packaging (or vice versa). Same script skeleton, scene-configurable Console. Gates on publicly available scenes only.
 
-2. **"Automotive Subassembly" scenario pack**
-   - A new scene representing a subassembly cell.
-   - Variations demonstrating humanoid integration for parts picking.
-   - Showcase Console path for BMW/Mercedes/Hyundai-style conversations.
+2. **Vertical scenario pack #3** — a third scene pack covering a different industrial mode (e.g., electronics SMT line or automotive subassembly) if SimReady or other publicly usable sources support it. Scene authoring remains out of scope.
 
-3. **Siemens-specific overlay**
-   - Adapter for Siemens Xcelerator platform integration (specifically Teamcenter X and Process Simulate).
-   - Walk-through of how Siemens' Mega-compatible stack lands on top of the Red Hat reference.
-   - Coordination with the existing Red Hat–Siemens account relationship (Amberg reference).
+3. **Physical robot integration (optional, hardware-gated)** — if hardware budget supports: one physical Unitree G1 or alternate humanoid integrated with the edge stack via MicroShift on a Jetson-class device. Sim-to-real policy transfer as the demo peak — a policy trained on SimReady scenes in Phase 2's Isaac Lab pipeline deploys to the physical robot and executes. If hardware isn't funded, the "real" side stays MicroShift-on-a-VM and the Phase 4 deliverable absorbs that explicitly.
 
-4. **Partner enablement package**
-   - SI enablement curriculum — for Accenture, IBM Consulting, Deloitte.
-   - Reusable Ansible collection for customer-site deployment.
-   - Published case-study templates.
+4. **Partner enablement package** — SI enablement materials (deck + lab guide) for field delivery partners; reusable Ansible collection for customer-site deployment; published case-study templates. **No partner-specific overlays land in this phase** — the charter keeps Siemens-specific integration explicitly out of scope until the reference is mature and a formal partnership engagement is opened (charter §Non-goals).
 
-5. **Physical robot integration (optional)**
-   - If hardware budget supports: a physical Unitree G1 integrated with the edge stack.
-   - Sim-to-real policy transfer as the demo peak.
+5. **Red Hat Summit / GTC session track** — session materials drawn from this repo's demos with real-customer anonymized outcomes if engagement feedback from the entry criteria allows.
 
 **Exit criteria**
-- Three distinct vertical scenario packs work in the Showcase Console.
-- The reference has documented integrations with at least one enterprise industrial platform (Siemens Xcelerator as the flagship).
-- Partner SIs are actively delivering engagements built on this reference.
+- At least two vertical scenario packs beyond warehouse are Console-selectable.
+- If physical hardware was acquired: sim-to-real loop works end-to-end from policy training to physical robot execution.
+- Partner enablement materials are published and at least one SI partner has delivered a customer engagement using them.
 
-**Phase 4 demo / artifact**
-- Vertical-specific 60-minute demos.
-- Siemens joint-presentation materials (once that relationship has been opened).
-- Red Hat Summit / GTC session materials showcasing real-customer outcomes.
+**Phase 4 artifacts**
+- Vertical-specific 20-min demo variants (same skeleton, different scenes).
+- Sim-to-real recording (if physical hardware).
+- Partner enablement lab guide.
+
+---
+
+## Phase 5 — Public-facing iteration (new; post-launch)
+
+**Goal**: formalize the truth that the showcase keeps improving after it goes public. Items that matter for long-term credibility but don't gate any of the three pre-launch demo scripts live here. This phase has no end date — it continues as long as the showcase remains a Red Hat enablement asset.
+
+**Work items (continuous, prioritized by field feedback)**
+
+1. **Scene pack expansion** — add scenes as NVIDIA SimReady grows or as public industrial USD content becomes available. No scene authoring; public sources only.
+
+2. **Fleet-scale reference doc v2+** — the Phase 2 doc is based on hub + companion + one spoke. As real customer deployments provide telemetry, update the doc with measured numbers at real-world scale. Target: named-customer reference numbers at 10+ site fan-out.
+
+3. **Performance envelope doc v2+** — continuous measurement. Add numbers for every new Phase 3+ component under load. HIL round-trip with guardrails enabled; VLA hot-swap p99 at varying load; Cosmos Predict pre-flight overhead budget.
+
+4. **OSCAL evidence bundle** — if the Phase 3 stretch item didn't land there, it lands here. Otherwise, expand to cover additional compliance frameworks as customer conversations demand (CMMC L3, IEC 62443, FedRAMP High cross-walks).
+
+5. **HIL drawer content refinements** — field feedback on what's actually useful in the drawer vs. what's decoration. Iterate the spec as operators report.
+
+6. **Customer-fork success recipes** — as Archetype-B and -C accounts clone the repo and stand up variants, capture their deltas (what they changed, what broke, what they had to document internally). Publish as `docs/sales-enablement/customer-fork-playbook.md`. This converts anecdotal "they got it running" into repeatable onboarding.
+
+7. **Talk-track and one-pager refresh** — `docs/sales-enablement/talk-tracks/` and `one-pagers/` become living artifacts; every real customer conversation feeds back.
+
+8. **NVIDIA stack version uplifts** — as Isaac Sim, Cosmos, and RHOAI release new versions, the reference pulls forward. Major version bumps that change demo beats trigger a script rev.
+
+9. **Objection-cards and competitive doc** — currently stub directories under `docs/sales-enablement/`. Populate based on real field objections logged over time.
+
+**Exit criteria**: there are no exit criteria. Phase 5 is perpetual.
+
+---
+
+## Explicit non-items (name them so scope creep doesn't reopen them)
+
+These are deliberately out of scope across all phases. If a customer or field conversation requests them, the correct answer is to point at this list and at the reasoning, not to quietly add them:
+
+- **Live N-site ACM deployment for any N > 3.** Multi-site credibility comes from the Phase 2 operating-math doc + real customer references, not from paying cloud bills to stand up a fake fleet. Demo shows hub + companion + one spoke. Doc covers the scale math.
+- **USD scene authoring of any kind.** Scenes come from NVIDIA SimReady and other publicly available sources only. No contracts, no custom modeling work. If a demo beat wants something public assets can't support, the beat changes to fit what's available, not the other way around.
+- **Training-data provenance attestation for ITAR- or export-controlled geometry.** The reference uses public scenes; provenance claims don't extend to classified-adjacent training corpora. Regulated-industry customers extend the attestation chain themselves for their own workloads.
+- **Llama Stack governance inline in serving-time robot command flow.** HIL gating happens on the GitOps / PR-open path only. Adding approval latency to 10Hz+ VLA inference is explicitly excluded as a design invariant.
+- **GR00T as the default served VLA.** OpenVLA is primary (open license, redistributable). GR00T slots in as a pluggable alternative gated on the customer's own NGC entitlement. See `docs/licensing-gates.md`.
+- **Siemens-specific integrations, BMW-specific integrations, any named-partner-specific integrations.** The reference proves the substrate; named-partner overlays are separate engagements that come *after* the reference is mature and a formal partnership is opened.
+- **Full Metropolis VSS 8-GPU deployment.** The narrow "event from a simulated camera" job is handled by Cosmos Reason 2 on a single L4. The VSS footprint is unjustified by any beat in any of the three scripts.
+- **USD Search API.** Cut in the Phase-1 story-driven audit — no downstream consumer in any of the three demos.
+- **BONES-SEED / GEAR-SONIC-based beats.** Licensing is unresolved per `docs/licensing-gates.md`; do not design demo surface around unreleaseable dependencies.
+- **Generic Red Hat security flex (FIPS/STIG/Sigstore as checklist items).** The differentiator-mapping doc §5 explicitly reframes security as OT-grade operational control. If a security beat doesn't map to a physical-AI concern (command-path integrity, policy-artifact provenance, air-gap for IP protection, OT segmentation), it doesn't land.
 
 ---
 
 ## Cross-phase concerns
 
-Some work is continuous, not phase-scoped.
+Some work is continuous, not phase-scoped:
 
-- **Documentation**: every new component or data flow updates the relevant doc the same PR. Documentation rot is a bug.
-- **Demos**: every phase produces a video recording of its flagship demo. Recordings land in `demos/<name>/recordings/`.
+- **Documentation**: every new component or data flow updates the relevant doc in the same PR. Documentation rot is a bug.
+- **Demos**: every pre-launch phase produces a video recording of its flagship demo. Recordings land in `demos/<name>/recordings/`.
 - **Testing**: integration tests for each loop land incrementally; end-to-end tests follow in Phase 2+.
-- **Security**: Sigstore enforcement tightens from warn → enforce in Phase 1. FIPS mode test runs become continuous in Phase 2.
-- **Talk tracks**: every phase's sales enablement artifact feeds back into the talk track doc (`docs/05-sales-enablement.md`). This is a living document.
+- **Security**: Sigstore enforcement tightens from warn → enforce in Phase 1; FIPS validation runs become continuous in Phase 2; STIG dispositions get refreshed with every OCP/RHCOS version bump.
+- **Talk tracks**: every phase's sales-enablement artifact feeds back into the talk-tracks doc. Living document.
+- **Honesty**: the charter's design principle "honest about limits" applies to every demo recording and every sales-enablement artifact. If a number is aspirational, it's marked aspirational. If a beat runs on companion not hub, the narration says so. Field teams who deliver with credibility compound; teams who oversell burn the reference. This is a cross-phase discipline, not a Phase N item.

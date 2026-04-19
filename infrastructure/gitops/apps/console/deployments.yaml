@@ -1,0 +1,111 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: showcase-console-backend
+  namespace: fleet-ops
+  labels:
+    app: showcase-console-backend
+    phase: phase-1
+  annotations:
+    image.openshift.io/triggers: |-
+      [{"from":{"kind":"ImageStreamTag","name":"showcase-console-backend:latest","namespace":"fleet-ops"},"fieldPath":"spec.template.spec.containers[?(@.name==\"backend\")].image"}]
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: showcase-console-backend
+  template:
+    metadata:
+      labels:
+        app: showcase-console-backend
+    spec:
+      serviceAccountName: showcase-console-backend
+      containers:
+        - name: backend
+          image: showcase-console-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8090
+              name: http
+          env:
+            - name: PORT
+              value: "8090"
+            - name: LOG_LEVEL
+              value: info
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: fleet-kafka-bootstrap.fleet-ops.svc:9092
+            - name: WMS_STUB_BASE_URL
+              value: http://wms-stub.fleet-ops.svc:8082
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: showcase-console-frontend
+  namespace: fleet-ops
+  labels:
+    app: showcase-console-frontend
+    phase: phase-1
+  annotations:
+    image.openshift.io/triggers: |-
+      [{"from":{"kind":"ImageStreamTag","name":"showcase-console-frontend:latest","namespace":"fleet-ops"},"fieldPath":"spec.template.spec.containers[?(@.name==\"frontend\")].image"}]
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: showcase-console-frontend
+  template:
+    metadata:
+      labels:
+        app: showcase-console-frontend
+    spec:
+      serviceAccountName: showcase-console-frontend
+      containers:
+        - name: frontend
+          image: showcase-console-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15

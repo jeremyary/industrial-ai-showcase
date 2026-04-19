@@ -1,0 +1,61 @@
+# This project was developed with assistance from AI tools.
+# Phase 1 host-native VLA server. Two build modes:
+#
+# MOCK (default; fast; no ROCm; no model download): ~300 MB image.
+#   podman build -f workloads/vla-serving-host/container/Containerfile \
+#     -t localhost/openvla-server:dev .
+#
+# REAL (with ROCm + PyTorch, for running actual OpenVLA-7B):
+#   podman build -f workloads/vla-serving-host/container/Containerfile \
+#     --build-arg=BASE_FLAVOR=rocm \
+#     -t localhost/openvla-server:rocm .
+#
+# Swap the Quadlet Image= to the tag you want. Use :dev for wiring verification,
+# :rocm once you're ready for real inference. Per ADR-026.
+ARG BASE_FLAVOR=slim
+
+FROM registry.access.redhat.com/ubi9/python-312:latest AS slim
+
+FROM docker.io/rocm/dev-ubuntu-22.04:7.2 AS rocm
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.12 python3.12-venv python3-pip git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN python3.12 -m pip install --upgrade pip setuptools wheel
+# PyTorch for ROCm 6.2 — gfx1151 (Strix Halo) runs these via HSA_OVERRIDE_GFX_VERSION=11.5.1.
+RUN python3.12 -m pip install --index-url https://download.pytorch.org/whl/rocm6.2 torch torchvision
+
+FROM ${BASE_FLAVOR} AS final
+
+USER 0
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /opt/app
+
+COPY workloads/vla-serving-host/pyproject.toml /opt/app/vla-serving-host/
+COPY workloads/vla-serving-host/src /opt/app/vla-serving-host/src
+
+# Install service-level deps. In :slim we install everything except torch/torchvision
+# (the service defaults to VLA_MODE=mock which never imports torch). In :rocm the
+# base already has torch; we install --no-deps to avoid overwriting it.
+RUN pip3 install --no-cache-dir \
+        fastapi "uvicorn[standard]" \
+        pydantic pydantic-settings \
+        structlog pillow numpy \
+    && pip3 install --no-cache-dir --no-deps /opt/app/vla-serving-host \
+    && chown -R 1001:0 /opt/app
+
+# Real-model deps only land in the :rocm image.
+RUN if [ -f /etc/os-release ] && grep -q ubuntu /etc/os-release; then \
+        pip3 install --no-cache-dir transformers accelerate timm ; \
+    fi
+
+USER 1001
+
+EXPOSE 8000
+
+CMD ["uvicorn", "openvla_server.main:app", "--host", "0.0.0.0", "--port", "8000"]

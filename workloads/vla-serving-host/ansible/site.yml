@@ -1,0 +1,93 @@
+# This project was developed with assistance from AI tools.
+# Provisions the host-native OpenVLA serving runtime on the companion Fedora host.
+# Per ADR-026: serving lives outside OpenShift because AMD consumer accelerators
+# don't have a supported NVIDIA-parity device plugin on OpenShift today.
+---
+- name: Provision host-native OpenVLA serving runtime on companion
+  hosts: companion
+  become: true
+  gather_facts: true
+
+  vars:
+    runtime_user: vla
+    runtime_uid: 1500
+    runtime_home: /var/lib/vla-serving
+    model_cache: /var/cache/vla-models
+    container_image: quay.io/redhat-physical-ai-reference/vla-serving-host:dev
+    listen_port: 8000
+    # SNO pods (10.128.0.0/14) egress through the SNO node's LAN IP (10.0.0.80);
+    # the Fedora host at 10.0.0.73 sees source IP 10.0.0.80 when pods reach it.
+    # Firewalld rule scopes port 8000 to the LAN subnet to keep it tight.
+    allowed_source_cidr: 10.0.0.0/24
+
+  tasks:
+    - name: Ensure podman + systemd-container packages are present
+      ansible.builtin.dnf:
+        name:
+          - podman
+          - podman-compose
+          - systemd-container
+          - firewalld
+        state: present
+
+    - name: Ensure firewalld is running
+      ansible.builtin.systemd:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: Create runtime user
+      ansible.builtin.user:
+        name: "{{ runtime_user }}"
+        uid: "{{ runtime_uid }}"
+        home: "{{ runtime_home }}"
+        shell: /sbin/nologin
+        system: true
+        create_home: true
+
+    - name: Ensure model-cache directory exists
+      ansible.builtin.file:
+        path: "{{ model_cache }}"
+        state: directory
+        owner: "{{ runtime_user }}"
+        group: "{{ runtime_user }}"
+        mode: "0750"
+
+    - name: Grant runtime user access to GPU + NPU device nodes
+      ansible.builtin.user:
+        name: "{{ runtime_user }}"
+        groups:
+          - render
+          - video
+        append: true
+
+    - name: Render the openvla-server Quadlet unit
+      ansible.builtin.template:
+        src: openvla-server.container.j2
+        dest: /etc/containers/systemd/openvla-server.container
+        owner: root
+        group: root
+        mode: "0644"
+      notify: reload-systemd
+
+    - name: Add a rich rule permitting SNO LAN to reach the VLA port
+      ansible.posix.firewalld:
+        rich_rule: "rule family=ipv4 source address={{ allowed_source_cidr }} port port={{ listen_port }} protocol=tcp accept"
+        permanent: true
+        state: enabled
+        immediate: true
+
+    - name: Reload systemd (Quadlet regeneration)
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Enable and start openvla-server
+      ansible.builtin.systemd:
+        name: openvla-server.service
+        state: started
+        enabled: true
+
+  handlers:
+    - name: reload-systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

@@ -1,0 +1,21 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: wms-stub
+  namespace: fleet-ops
+  labels:
+    app: wms-stub
+    phase: phase-1
+spec:
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: workloads/wms-stub/container/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: wms-stub:latest
+  triggers: []
