@@ -67,6 +67,7 @@ async def lifespan(app: FastAPI):
         weights=settings.openvla_weights,
         unnorm_key=settings.openvla_unnorm_key,
         device=settings.openvla_device,
+        torch_dtype=settings.openvla_torch_dtype,
     )
     app.state.settings = settings
     app.state.log = log
