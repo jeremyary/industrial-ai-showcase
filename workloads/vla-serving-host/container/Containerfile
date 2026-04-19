@@ -16,20 +16,13 @@ ARG BASE_FLAVOR=slim
 
 FROM registry.access.redhat.com/ubi9/python-312:latest AS slim
 
-FROM docker.io/rocm/dev-ubuntu-24.04:7.2 AS rocm
-# Ubuntu 24.04 ships python3.12 by default. PEP 668 blocks system pip; we
-# set PIP_BREAK_SYSTEM_PACKAGES since this container is single-purpose.
+FROM docker.io/rocm/pytorch:rocm7.2.2_ubuntu24.04_py3.12_pytorch_release_2.10.0 AS rocm
+# ROCm 7.2.2 + PyTorch 2.10 + Python 3.12 pre-installed. NVIDIA publishes
+# this combo verified against current AMD hardware including gfx1151
+# (Strix Halo). Avoids the pip-install-torch-from-wheel path that previously
+# landed us on ROCm 6.2 wheels and crashed during bf16 weight load.
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        python3.12 python3.12-venv python3-pip git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-# Don't try to upgrade apt-installed pip (no RECORD → can't uninstall).
-# Use --root-user-action=ignore since we're definitely root here.
 ENV PIP_ROOT_USER_ACTION=ignore
-RUN python3.12 -m pip install --upgrade --ignore-installed setuptools wheel
-# PyTorch for ROCm 6.2 — gfx1151 (Strix Halo) runs these via HSA_OVERRIDE_GFX_VERSION=11.5.1.
-RUN python3.12 -m pip install --index-url https://download.pytorch.org/whl/rocm6.2 torch torchvision
 
 FROM ${BASE_FLAVOR} AS final
 
