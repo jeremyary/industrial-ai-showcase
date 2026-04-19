@@ -1,0 +1,11 @@
+# Values overlay for kit-appstreaming-rmcp 1.11.1 on OSD.
+global:
+  imagePullSecrets:
+    - name: ngc-pull-secret
+
+rmcp:
+  imagePullSecrets:
+    - name: ngc-pull-secret
+  # OpenShift auto-assigns a UID from the namespace range when runAsNonRoot
+  # is false; we don't need to override that. The ServiceAccount still needs
+  # SCC access — granted via a sibling RoleBinding (rmcp-scc-binding.yaml).
