@@ -1,0 +1,10 @@
+# Values overlay for kit-appstreaming-applications 1.11.1 on OSD.
+# Isaac Sim application + profile are registered post-install as CRDs
+# (see isaac-sim-profile.yaml).
+global:
+  imagePullSecrets:
+    - name: ngc-pull-secret
+
+applications:
+  imagePullSecrets:
+    - name: ngc-pull-secret

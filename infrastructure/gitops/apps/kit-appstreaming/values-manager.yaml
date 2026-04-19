@@ -1,0 +1,19 @@
+# Values overlay for kit-appstreaming-manager 1.11.1 on OSD.
+global:
+  imagePullSecrets:
+    - name: ngc-pull-secret
+
+streaming:
+  imagePullSecrets:
+    - name: ngc-pull-secret
+  serviceConfig:
+    # Phase 1 demo cap: one warm session, up to 3 concurrent if anybody else
+    # watches simultaneously. L40S GPU budget is the real ceiling (Isaac Sim
+    # is L40S-hungry per `docs/08-gpu-resource-planning.md`).
+    session_capacity: 3
+    session_check_ready: true
+    backend_rmcp_url: "http://rmcp.omni-streaming.svc.cluster.local:80"
+    backend_applications_resolver_url: "http://applications.omni-streaming.svc.cluster.local:80"
+    # No CSP integration — on-prem/OSD deployment. Generic backend uses plain
+    # Kubernetes primitives (Services + ClusterIP for session-to-manager comms).
+    backend_csp_cls: "nv.svc.streaming._csp.Generic"
