@@ -8,7 +8,7 @@ The reference is organized into seven layers, stacked from substrate to experien
 
 1. **Foundation** — OpenShift cluster, GPU Operator, GitOps, ACM, storage, observability, security baseline.
 2. **Platform services** — OpenShift AI, Service Mesh, AMQ Streams, Data Foundation buckets.
-3. **NVIDIA stack** — Nucleus / USD backend, Isaac Sim, Isaac Lab, Kit App Streaming, Cosmos NIMs, Metropolis VSS, GR00T serving.
+3. **NVIDIA stack** — Nucleus / USD backend, Isaac Sim, Isaac Lab, Kit App Streaming, Cosmos Predict/Transfer, Cosmos Reason 2 (VLM for perception), GR00T / OpenVLA serving.
 4. **Integration layer** — Fleet manager, mission dispatcher, WMS stub, MCP servers, LangGraph agents.
 5. **Edge layer** — Device Edge / MicroShift targets, GitOps spokes, bootable containers.
 6. **Experience layer** — The Showcase Console.
@@ -33,7 +33,7 @@ The entire system is animated by four closed loops. Each one is a full end-to-en
 
 ### Loop 1 — Operational inference (factory runtime)
 
-Cameras and simulated sensors feed Metropolis VSS, which generates situational summaries and anomaly signals. These events land on a Kafka topic. The fleet manager consumes the events, decides actions, dispatches missions to robot brains. Robot brains (GR00T served via vLLM) take perception inputs, emit actions. Actions return through the mesh to physical (sim or real) robots. Observability traces the whole path.
+On-site cameras (simulated by the companion's fake-camera service in Phase 1) publish frames to Kafka. A hub-side obstruction-detector pod calls Cosmos Reason 2-8B for visual reasoning and emits structured safety alerts. The fleet manager consumes alerts alongside pending missions, replans when an active route crosses an alerted zone, and dispatches reroutes. On the companion edge, the Mission Dispatcher's Waypoint Planner drives the robot pose and calls OpenVLA on pick for the manipulation policy. Telemetry federates back to hub; the Isaac Sim digital twin reflects reality. Observability traces the whole path. See `03-data-flows.md` for topics and schemas.
 
 **What this demonstrates**: "this is a physical AI factory running." Applies to all three audience archetypes; the narrative layering differs by depth.
 
@@ -108,8 +108,8 @@ This list is the "upstream dependency" surface. When these change (and they will
 - Isaac Sim / Isaac Lab for simulation and RL training.
 - Omniverse Kit SDK + Kit App Streaming for building and streaming apps.
 - Cosmos Predict 2.5 / Cosmos Transfer NIMs for world foundation models.
-- GR00T N1.7 (and forthcoming N2) as the primary humanoid VLA.
-- Metropolis VSS blueprint for visual AI summarization.
+- GR00T N1.7 (and forthcoming N2) as the primary humanoid VLA; OpenVLA for the Phase-1 warehouse demo on the AMD edge.
+- Cosmos Reason (VLM) for visual reasoning / obstruction detection — replaces the earlier Metropolis VSS plan per ADR-027.
 - Omniverse MCP servers for agentic access.
 - Jetson Thor / Orin as edge compute targets (on the roadmap side).
 - GPU Operator, Network Operator (on the OpenShift substrate side).
@@ -132,7 +132,7 @@ This list is the reason the project exists. None of these are in any NVIDIA refe
 - **Nucleus stays** for Phase 1, even though `ovstorage` is architecturally cleaner. Reason: customers are on Nucleus today and need migration guidance, not purism. A Phase-2 variant adds an `ovstorage` path.
 - **Kit App Streaming is a deliberate choice over thick-client Kit workstations for demos.** The Showcase Console embeds a Kit App Streaming viewport; no remote desktops, no VNC, no fat-client distribution.
 - **Everything that serves LLM/VLA inference goes through vLLM/KServe, including the Cosmos NIMs where possible.** Reason: one serving surface, consistent observability, consistent lifecycle. Where NIMs can't be replaced because they're packaged as runnables themselves, they're deployed as OpenShift Deployments with KServe-equivalent observability wrappers.
-- **Metropolis VSS ships as the Video Search & Summarization NIM stack, not as a custom rewrite.** We're consumers here. Customizations go into the consuming agents, not into the blueprint itself.
+- **Cosmos Reason 2-8B replaces Metropolis VSS for the Phase-1 camera-event path.** The narrow "event from camera" job is the only perception beat any demo script needs; the 8-GPU VSS footprint doesn't justify itself here. See ADR-027.
 - **Unitree G1 is the primary humanoid embodiment in sim** because it's commercially purchasable, has good sim assets, and is popular enough that references resonate across customers. The architecture is embodiment-pluggable; the Unitree choice is for the primary scripted demo.
 - **GR00T is served, Pi-0/OpenVLA are supported via config.** The serving layer takes a model profile (checkpoint, tokenizer config, action-space spec) as a CR; swapping is a YAML change. This is "bring your own model" made operational.
 

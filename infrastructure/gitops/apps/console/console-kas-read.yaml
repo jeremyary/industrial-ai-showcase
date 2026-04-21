@@ -1,0 +1,28 @@
+# Backend needs to read Kit pod IPs so the browser can create a TURN
+# permission for the exact endpoint Kit listens on. Without this, Kit's
+# SDP offer (c=0.0.0.0, no a=candidate: lines) leaves the browser
+# without a concrete remote address to authorize on the coturn relay.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: console-kas-pod-reader
+  namespace: omni-streaming
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: console-kas-pod-reader
+  namespace: omni-streaming
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: console-kas-pod-reader
+subjects:
+  - kind: ServiceAccount
+    name: showcase-console-backend
+    namespace: fleet-ops

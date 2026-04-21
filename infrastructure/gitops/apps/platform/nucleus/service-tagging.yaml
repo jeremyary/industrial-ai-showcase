@@ -16,6 +16,7 @@ spec:
     - name: tagging
       port: 3020
       targetPort: 3020
+      appProtocol: tcp
 ---
 # Source: omniverse-nucleus/templates/services/tagging.yaml
 apiVersion: apps/v1

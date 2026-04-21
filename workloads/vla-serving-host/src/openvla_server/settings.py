@@ -27,3 +27,7 @@ class OpenvlaSettings(BaseSettings):
         description="Action-normalization dataset key; 'bridge_orig' matches the OpenVLA paper defaults.",
     )
     openvla_device: str = Field(default="cuda", description="cuda | cpu. ROCm presents as cuda via PyTorch.")
+    openvla_torch_dtype: str = Field(
+        default="fp16",
+        description="fp16 | bf16 | fp32. fp16 is more stable than bf16 on early gfx1151 ROCm.",
+    )

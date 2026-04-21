@@ -5,9 +5,10 @@ USER 0
 ENV NPM_CONFIG_CACHE=/tmp/.npm
 
 WORKDIR /opt/app-root/src
-COPY console/frontend/package.json console/frontend/tsconfig.json \
-     console/frontend/tsconfig.app.json console/frontend/tsconfig.node.json \
-     console/frontend/vite.config.ts console/frontend/index.html ./
+COPY console/frontend/package.json console/frontend/.npmrc \
+     console/frontend/tsconfig.json console/frontend/tsconfig.app.json \
+     console/frontend/tsconfig.node.json console/frontend/vite.config.ts \
+     console/frontend/index.html ./
 RUN npm install --no-audit --no-fund
 
 COPY console/frontend/src ./src

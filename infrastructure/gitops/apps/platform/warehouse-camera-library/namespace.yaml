@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: warehouse-data
+  labels:
+    # Single namespace for all demo-data backing services. Phase-1 inhabits
+    # only the camera library; Phase-2+ may add a USD cache, a Kafka dead-
+    # letter archive, etc.
+    app.kubernetes.io/part-of: warehouse-data

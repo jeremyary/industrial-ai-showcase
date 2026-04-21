@@ -98,14 +98,23 @@ Rotation that preserves token validity: copy the existing values, then rotate on
 # All 12 deployments Ready:
 oc get deploy -n omniverse-nucleus
 
-# Navigator UI:
-open "https://nucleus.apps.$(oc get ingresses.config cluster -o jsonpath='{.spec.domain}')/"
+# Navigator UI (plain HTTP — Routes have no TLS block, matching upstream SERVICE_DEPLOYMENTS advertisement):
+open "http://nucleus.apps.$(oc get ingresses.config cluster -o jsonpath='{.spec.domain}')/"
 
-# Default creds (temp):
-#   admin / omniverse123
+# Creds for the `omniverse` admin user:
+#   master-password from `nucleus-passwords` Secret (seeded into Vault at `kv/nucleus/passwords`)
 ```
 
-End-to-end test from a Kit app or `omniverse-cli` client connecting to `omniverse://nucleus.apps.<domain>/` is Part E — after mesh enrollment wraps up auth.
+**End-to-end client validation** (Session 19): Omniverse Launcher on a workstation authenticates against `omniverse://nucleus.apps.<domain>/` with `omniverse` / master-password and navigates the asset tree. In-cluster `omni.client` (bootstrapped via `isaacsim.SimulationApp`) performs authenticated uploads — see `../nucleus-seeder/`.
+
+## Asset seeding
+
+The `nucleus-seeder` Job at `../nucleus-seeder/` is a one-shot that mirrors the Phase-1 warehouse asset tree from the public Isaac Sim 6.0 asset CDN into this Nucleus, so the deployment is air-gap-capable at demo time. Run it after:
+
+1. Nucleus Deployments all Ready + Routes responding.
+2. Navigator browser login verified with the `omniverse` / master-password combo (confirms auth service is serving; a broken auth layer is opaque otherwise).
+
+Re-run anytime a new `SEED_ROOTS` prefix is added. Safe to re-run — uses `CopyBehavior.OVERWRITE`.
 
 ## Divergence from NVIDIA's Compose
 

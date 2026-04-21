@@ -41,7 +41,11 @@ export class FleetStream extends EventEmitter {
       sessionTimeout: 45_000,
       heartbeatInterval: 5_000,
       allowAutoTopicCreation: false,
-      maxWaitTimeInMs: 1000,
+      // Lower than the kafkajs default (5s) so the UI feels responsive.
+      // At 200ms each poll returns quickly; with nothing pending, the
+      // consumer is in a tight loop but it's trivial work on a backend
+      // that's already idle most of the time.
+      maxWaitTimeInMs: 200,
     });
 
     this.consumer.on(this.consumer.events.CRASH, (event) => {

@@ -1,0 +1,20 @@
+---
+# Flux HelmRepository pointing at NVIDIA's NGC Omniverse charts. Name is
+# the prefix our ApplicationVersion's `helm_chart: nvidia-omni/...` uses —
+# the Streaming Manager splits that on `/` to derive the sourceRef name.
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: nvidia-omni
+  namespace: omni-streaming
+spec:
+  interval: 10m
+  url: https://helm.ngc.nvidia.com/nvidia/omniverse
+  secretRef:
+    name: ngc-omni-user
+---
+# Flux expects `username` and `password` keys on the helm-repo secret.
+# We could reuse `ngc-omni-user` (which has those keys) but Flux wants
+# the secret in this namespace with the exact keys. ngc-omni-user already
+# has username + password — create a copy, or (simpler) point the
+# HelmRepository at ngc-omni-user directly.

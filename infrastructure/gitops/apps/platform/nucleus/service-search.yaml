@@ -16,6 +16,7 @@ spec:
     - name: search
       port: 3400
       targetPort: 3400
+      appProtocol: tcp
 ---
 # Source: omniverse-nucleus/templates/services/search.yaml
 apiVersion: apps/v1

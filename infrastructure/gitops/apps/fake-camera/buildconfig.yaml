@@ -1,0 +1,21 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: fake-camera
+  namespace: warehouse-edge
+  labels:
+    app: fake-camera
+    phase: phase-1
+spec:
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: workloads/fake-camera/container/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: fake-camera:latest
+  triggers: []

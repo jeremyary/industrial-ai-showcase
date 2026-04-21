@@ -4,51 +4,76 @@ Four loops animate this system. Each is described here with component participan
 
 ## Loop 1 — Operational inference (factory runtime)
 
-This is the "this is physical AI running right now" loop. It's what Archetype A sees in the first 30 seconds.
+This is the "this is physical AI running right now" loop. It's what Archetype A sees in the first 30 seconds. Phase 1 wires it as a real event-driven pipeline across hub + companion per ADR-027 — every visible scene change in the demo is the effect of a real Kafka event traveling through the production topology.
 
 ### Participants
 
-- Cameras (simulated in Isaac Sim, physical in production)
-- Metropolis VSS (visual summaries)
-- Kafka topic `fleet.events` (VSS output)
-- Fleet Manager (consumes events)
-- Kafka topic `fleet.missions` (Fleet Manager output)
-- Mission Dispatcher
-- Robot Brain (GR00T via vLLM on KServe)
-- Robots (Nova Carter AMRs, Unitree G1 humanoid — in sim, on MicroShift edge)
-- Kafka topic `fleet.telemetry` (robots report back)
-- Showcase Console (observer)
+- **Companion (on-site warehouse edge)**:
+  - Fake-camera service — publishes AI-generated photorealistic warehouse frames to Kafka (simulating on-site cameras; an HTTP `POST /state` endpoint switches the emitted frame)
+  - Mission Dispatcher — consumes missions, drives the Waypoint Planner, calls OpenVLA on pick
+  - Waypoint Planner (inside Mission Dispatcher) — 5 Hz pose emission along the current route
+  - OpenVLA (host-native on Fedora / ROCm) — manipulation policy, not navigation (per ADR-026 + ADR-027)
+  - Kafka (companion side of federation)
+- **Hub (HQ data center)**:
+  - Cosmos Reason 2-8B on L40S — VLM obstruction detection via OpenAI-compat `/v1/chat/completions` (Qwen3-VL-derivative; vLLM 0.11.0 + `--reasoning-parser qwen3`)
+  - Obstruction-detector pod — consumes `warehouse.cameras.aisle3`, calls Cosmos Reason, publishes `fleet.safety.alerts`
+  - Fleet Manager — consumes `fleet.missions` + `fleet.safety.alerts`, replans on alert
+  - WMS-stub — presenter-driven mission trigger
+  - Isaac Sim on L40S — digital twin; twin-update subscriber consumes telemetry + alerts + camera topics and reflects reality in the scene
+  - Showcase Console — two demo buttons (Dispatch Mission / Drop Pallet), event stream, MJPEG viewport embed
+- **Cross-cluster**:
+  - MirrorMaker2 federation carries `warehouse.cameras.*` + `warehouse.telemetry.forklifts.*` edge→hub and `fleet.missions` + `fleet.safety.alerts` hub→edge
+  - Kafka topics: `warehouse.cameras.aisle3`, `fleet.missions`, `fleet.safety.alerts`, `warehouse.telemetry.forklifts.fl-07`, `fleet.ops.events`
+  - `warehouse-topology.yaml` is the single source of truth for aisle/dock/approach-point coordinates + forklift id
 
 ### Flow
 
 ```
-Camera (USD sensor) 
-  ↓ RTSP stream / GStreamer pipeline
-Metropolis VSS (NIM)
-  ↓ structured summary events
-Kafka: fleet.events
-  ↓
-Fleet Manager — decides intervention
-  ↓
-Kafka: fleet.missions
-  ↓
-Mission Dispatcher — routes to specific robot brain instance
-  ↓ gRPC
-Robot Brain (GR00T via vLLM) — observation in, action out
-  ↓
-Robot (sim or real) — executes action
-  ↓
-Kafka: fleet.telemetry
-  ↓
-Observability (Prometheus, Tempo) + Showcase Console dashboard
+FACTORY EDGE (companion)                  HQ DATA CENTER (hub)
+──────────────────────────────            ──────────────────────────────
+[presenter: Dispatch Mission] → WMS-stub → fleet.missions
+                                                ↓ (federation)
+Mission Dispatcher ←───────── fleet.missions
+  ├─ Waypoint Planner (5 Hz)
+  ├─ forklift drives to aisle-3 approach-point, pauses for clearance
+  └─ publishes telemetry → warehouse.telemetry.forklifts.fl-07
+                                                ↓ (federation)
+                                          Fleet Manager consumes telemetry
+                                          Isaac Sim twin-update moves forklift prim
+
+[presenter: Drop Pallet] → POST /state → Fake-camera service
+  switches published frame: aisle3_empty.jpg → aisle3_pallet.jpg
+  publishes → warehouse.cameras.aisle3
+                                                ↓ (federation)
+                                          Obstruction-detector pod consumes frame
+                                          calls Cosmos Reason 2-8B → {"obstruction": true}
+                                          publishes → fleet.safety.alerts
+                                                ↓
+                                          Fleet Manager replans via aisle-4,
+                                          issues reroute mission instead of clearance
+                                                ↓ (federation back down)
+Mission Dispatcher ←───────── reroute mission
+  Waypoint Planner picks up new route
+  OpenVLA called in the loop on pick (manipulation policy)
+  telemetry continues → warehouse.telemetry.forklifts.fl-07
+                                                ↓
+                                          Isaac Sim twin:
+                                            - places pallet prim in aisle-3
+                                            - reroutes forklift prim via aisle-4
+                                            - reaches Dock-B
+                                          Observability (Prometheus, Tempo) +
+                                          Showcase Console event stream
 ```
+
+The only scripted inputs are the two presenter buttons. Everything downstream — Cosmos Reason inference, Fleet Manager replan, Waypoint Planner emission, twin update — is real Kafka events.
 
 ### Key event schemas
 
 Defined in `workloads/fleet-manager/schemas/` as Avro. Core event types:
 
-- `CameraSummaryEvent`: `{camera_id, timestamp, zone_id, summary_text, detected_entities[], anomaly_score}`
-- `Mission`: `{mission_id, target_robot_id, mission_type, parameters, deadline}`
+- `CameraFrameEvent`: `{camera_id, timestamp, aisle_id, jpeg_bytes_ref}` (payload points at MinIO or inline)
+- `SafetyAlert`: `{alert_id, timestamp, aisle_id, camera_id, detection_label, confidence, source_model}`
+- `Mission`: `{mission_id, target_robot_id, mission_type, parameters, deadline}` — `target_robot_id` is the forklift id (`fl-07` in Phase 1)
 - `TelemetryEvent`: `{robot_id, timestamp, pose, joint_state, battery, current_mission_id, status}`
 
 ### Demo beats this supports
@@ -60,7 +85,7 @@ Defined in `workloads/fleet-manager/schemas/` as Avro. Core event types:
 
 ### Failure modes the demo intentionally surfaces
 
-- **Camera-to-VSS outage**: show fallback to historical summaries, alerting in Grafana.
+- **Camera-to-obstruction-detector outage**: show fake-camera or obstruction-detector going unready, fallback to historical alerts in Grafana, and the fleet-manager holding missions at approach-points until detection recovers.
 - **Robot-brain unavailable**: show KServe autoscaling spinning up a replacement, and fleet manager throttling mission issuance until it's back.
 - **Kafka broker lost**: show the 3-broker replication and zero-downtime continuation.
 

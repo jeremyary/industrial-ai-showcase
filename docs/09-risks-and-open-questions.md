@@ -378,7 +378,7 @@ Items fall into four buckets: **open decisions** (things we will decide, we're j
 
 **Scenario**: Seller is in a live customer meeting; a GPU node drops.
 
-**Response**: Console auto-transitions to Mode B. Scenarios requiring GR00T + VSS + Kit streaming concurrently downgrade to replay mode. Seller gets a polite banner: "We're running degraded — some interactive elements will play back from recording." Customer usually doesn't notice unless the seller draws attention to it.
+**Response**: Console auto-transitions to Mode B. Scenarios requiring Cosmos Reason 2 + Isaac Sim twin + downstream serving concurrently downgrade to replay mode. Seller gets a polite banner: "We're running degraded — some interactive elements will play back from recording." Customer usually doesn't notice unless the seller draws attention to it.
 
 ### C-2: Nucleus unavailability
 

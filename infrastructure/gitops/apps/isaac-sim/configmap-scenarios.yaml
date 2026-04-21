@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: isaac-sim-scenarios
+  namespace: isaac-sim
+  labels:
+    app: isaac-sim
+data:
+  # Mirror of workloads/isaac-sim/scenarios/warehouse_baseline.py — kept in
+  # sync manually for Phase 1; Phase 2 tooling moves this to a Tekton task.
+  warehouse_baseline.py: |
+    # This project was developed with assistance from AI tools.
+    """Warehouse-baseline startup script for the Isaac Sim 5.0 Streaming app."""
+    import asyncio
+    import traceback
+
+    import carb
+    import omni.kit.app
+    import omni.usd
+    from isaacsim.storage.native import get_assets_root_path_async
+
+    STAGE_URL_REL = "/Isaac/Samples/Replicator/Stage/full_warehouse_worker_and_anim_cameras.usd"
+    CARTER_URL_REL = "/Isaac/Samples/Replicator/OmniGraph/nova_carter_nav_only.usd"
+    CARTER_STAGE_PATH = "/World/nova_carter"
+    CARTER_POSITION = (-6.0, 4.0, 0.0)
+
+
+    async def _open_stage(url):
+        ctx = omni.usd.get_context()
+        carb.log_info(f"warehouse_baseline: opening {url}")
+        result, err = await ctx.open_stage_async(url)
+        if not result:
+            raise RuntimeError(f"failed to open {url}: {err}")
+
+
+    async def _add_carter(stage_url):
+        from pxr import Gf, Sdf, UsdGeom
+
+        stage = omni.usd.get_context().get_stage()
+        if stage is None:
+            raise RuntimeError("no stage after open_stage_async")
+        xform = UsdGeom.Xform.Define(stage, Sdf.Path(CARTER_STAGE_PATH))
+        xform.GetPrim().GetReferences().AddReference(stage_url)
+        UsdGeom.XformCommonAPI(xform).SetTranslate(Gf.Vec3d(*CARTER_POSITION))
+
+
+    async def _run():
+        try:
+            asset_root = await get_assets_root_path_async()
+            if not asset_root:
+                raise RuntimeError("no Isaac asset root resolved — NVIDIA CDN unreachable?")
+            carb.log_info(f"warehouse_baseline: asset_root={asset_root}")
+            stage_url = f"{asset_root}{STAGE_URL_REL}"
+            carter_url = f"{asset_root}{CARTER_URL_REL}"
+            await _open_stage(stage_url)
+            await _add_carter(carter_url)
+            import omni.timeline
+            omni.timeline.get_timeline_interface().play()
+            carb.log_info("warehouse_baseline: scene ready, timeline playing")
+        except Exception:
+            carb.log_error("warehouse_baseline: " + traceback.format_exc())
+
+
+    asyncio.ensure_future(_run())

@@ -16,12 +16,15 @@ spec:
     - name: auth
       port: 3100
       targetPort: 3100
+      appProtocol: tcp
     - name: auth-login
       port: 3180
       targetPort: 3180
+      appProtocol: tcp
     - name: auth-api
       port: 8000
       targetPort: 8000
+      appProtocol: tcp
 ---
 # Source: omniverse-nucleus/templates/services/auth.yaml
 apiVersion: apps/v1

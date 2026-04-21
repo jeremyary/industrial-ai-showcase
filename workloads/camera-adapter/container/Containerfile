@@ -1,0 +1,25 @@
+# This project was developed with assistance from AI tools.
+FROM registry.access.redhat.com/ubi9/python-312:latest
+
+USER 0
+RUN dnf install -y --setopt=install_weak_deps=False \
+        librdkafka \
+    && dnf clean all && rm -rf /var/cache/dnf
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /opt/app-root/src
+
+COPY workloads/common/python-lib /opt/app-root/src/common-lib
+RUN pip install /opt/app-root/src/common-lib
+
+COPY workloads/camera-adapter/pyproject.toml /opt/app-root/src/camera-adapter/
+COPY workloads/camera-adapter/src /opt/app-root/src/camera-adapter/src
+RUN pip install /opt/app-root/src/camera-adapter
+
+USER 1001
+EXPOSE 8083
+CMD ["uvicorn", "camera_adapter.main:app", "--host", "0.0.0.0", "--port", "8083"]

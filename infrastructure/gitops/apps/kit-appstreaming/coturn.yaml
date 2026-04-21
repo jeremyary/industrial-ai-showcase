@@ -1,0 +1,175 @@
+# coturn TURN-TLS relay for KAS WebRTC media
+#
+# Why this exists: OpenShift Routes only forward HTTP(S)/TLS+SNI traffic.
+# WebRTC media is UDP, and Kit's SDP offers UDP-only candidates with
+# `a=ice-lite` — so a browser on the public internet cannot reach Kit's
+# pod directly for media.
+#
+# TURN-TLS solves this: the browser opens a real TLS connection to coturn
+# on port 443 (SNI-routable through HAProxy passthrough). Inside the TLS
+# tunnel, the browser allocates a TURN relay. The browser reports that
+# relay address in its SDP answer. Kit (intra-cluster) sends UDP media to
+# coturn's pod IP — coturn then forwards it back to the browser through
+# the TLS tunnel.
+#
+# No NLB, no per-session plumbing, no custom bridge code. The single
+# coturn Deployment handles all concurrent sessions.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: coturn
+  namespace: omni-streaming
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: coturn-anyuid
+  namespace: omni-streaming
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+subjects:
+  - kind: ServiceAccount
+    name: coturn
+    namespace: omni-streaming
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coturn-config
+  namespace: omni-streaming
+data:
+  turnserver.conf: |
+    # Listen only on the TLS port — we serve exclusively through the
+    # OCP passthrough Route on 443, which requires a TLS ClientHello
+    # with SNI. Bare STUN/TURN (no-TLS) would be dropped by HAProxy.
+    listening-port=3478
+    tls-listening-port=5349
+    min-port=49200
+    max-port=49300
+
+    # Advertise the pod IP in TURN allocate responses so that Kit
+    # (also intra-cluster) routes media to coturn's pod directly.
+    # The external address the browser dials is the Route hostname.
+    listening-ip=0.0.0.0
+    relay-ip=0.0.0.0
+
+    fingerprint
+    lt-cred-mech
+    realm=omni-streaming.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+    user=kasdemo:TURN_PASSWORD_PLACEHOLDER
+
+    no-multicast-peers
+    no-cli
+    no-tlsv1
+    no-tlsv1_1
+
+    cert=/etc/coturn/tls/tls.crt
+    pkey=/etc/coturn/tls/tls.key
+
+    simple-log
+    log-file=stdout
+    verbose
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coturn
+  namespace: omni-streaming
+  labels:
+    app.kubernetes.io/name: coturn
+    app.kubernetes.io/part-of: kit-appstreaming
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: coturn
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: coturn
+    spec:
+      serviceAccountName: coturn
+      containers:
+        - name: coturn
+          image: quay.io/coturn/coturn:4.7.0
+          args: ["-c", "/etc/coturn/config/turnserver.conf"]
+          ports:
+            - containerPort: 3478
+              name: turn
+            - containerPort: 5349
+              name: turns
+          env:
+            - name: TURN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: coturn-static-auth
+                  key: password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              sed "s|TURN_PASSWORD_PLACEHOLDER|${TURN_PASSWORD}|g" \
+                /etc/coturn/config/turnserver.conf > /tmp/turnserver.conf
+              exec turnserver -c /tmp/turnserver.conf
+          volumeMounts:
+            - name: config
+              mountPath: /etc/coturn/config
+              readOnly: true
+            - name: tls
+              mountPath: /etc/coturn/tls
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: coturn-config
+        - name: tls
+          secret:
+            secretName: coturn-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coturn
+  namespace: omni-streaming
+  labels:
+    app.kubernetes.io/name: coturn
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: coturn
+  ports:
+    - name: turns
+      port: 5349
+      targetPort: 5349
+      protocol: TCP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: turn
+  namespace: omni-streaming
+  labels:
+    app.kubernetes.io/name: coturn
+  annotations:
+    haproxy.router.openshift.io/timeout: 1h
+spec:
+  to:
+    kind: Service
+    name: coturn
+  port:
+    targetPort: turns
+  tls:
+    termination: passthrough

@@ -16,6 +16,7 @@ spec:
     - name: lft
       port: 3030
       targetPort: 3030
+      appProtocol: tcp
 ---
 # Source: omniverse-nucleus/templates/services/lft.yaml
 apiVersion: apps/v1

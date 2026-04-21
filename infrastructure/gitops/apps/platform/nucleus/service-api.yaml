@@ -13,18 +13,25 @@ spec:
   selector:
     app: nucleus-api
   ports:
+    # appProtocol: tcp keeps Istio from HTTP-routing these WebSocket ports —
+    # without it, Istio auto-detects HTTP, merges cluster-wide routes on port
+    # collision, and breaks WS upgrades (see KNOWN-ISSUES §9).
     - name: api
       port: 3009
       targetPort: 3009
+      appProtocol: tcp
     - name: api-authenticated
       port: 3106
       targetPort: 3106
+      appProtocol: tcp
     - name: api-admin
       port: 3006
       targetPort: 3006
+      appProtocol: tcp
     - name: api-lft
       port: 3007
       targetPort: 3007
+      appProtocol: tcp
 ---
 # Source: omniverse-nucleus/templates/services/api.yaml
 apiVersion: apps/v1

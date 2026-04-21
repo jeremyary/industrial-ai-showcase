@@ -28,6 +28,10 @@ videos/
 *.zip
 
 
+# Node / TypeScript
+node_modules/
+*.tsbuildinfo
+
 # IDE
 .vscode/
 

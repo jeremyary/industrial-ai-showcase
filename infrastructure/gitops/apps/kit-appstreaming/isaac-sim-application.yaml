@@ -1,0 +1,116 @@
+---
+apiVersion: omniverse.nvidia.com/v1
+kind: Application
+metadata:
+  name: isaac-sim
+  namespace: omni-streaming
+  labels:
+    # Tags on Application surface in the `tags` field of /cfg/apps API.
+    app.kubernetes.io/part-of: kit-appstreaming
+    industrial-ai-showcase: "true"
+spec:
+  name: isaac-sim
+  description: >-
+    NVIDIA Isaac Sim 6.0 (Early Developer Release) on Kit 110 — chosen over
+    5.1.0/Kit 107 specifically because Kit 110 added native TURN-relay
+    support. Our coturn-over-TLS path through the OpenShift Route now
+    survives past Kit 107's ~19-second session cutoff.
+---
+apiVersion: omniverse.nvidia.com/v1
+kind: ApplicationVersion
+metadata:
+  # CRDApplicationStore.get_version looks up by `<app_id>-<version>`;
+  # list_versions filters by label `app=<app_id>`; _extract_version_fields
+  # reads `labels.version`. See nv.ov.svc.applications.store.crd source.
+  name: isaac-sim-6.0.0-dev2
+  namespace: omni-streaming
+  labels:
+    app: isaac-sim
+    version: "6.0.0-dev2"
+spec:
+  container: nvcr.io/nvidia/isaac-sim
+  container_version: "6.0.0-dev2"
+  # helm_chart is `<HelmRepository-name>/<chart-name>`. Streaming Manager
+  # splits on `/` to produce the HelmRelease sourceRef.name + chart name.
+  helm_chart: nvidia-omni/kit-appstreaming-session
+  helm_chart_version: "1.11.1"
+---
+apiVersion: omniverse.nvidia.com/v1
+kind: ApplicationProfile
+metadata:
+  name: warehouse
+  namespace: omni-streaming
+  labels:
+    app: isaac-sim
+    version: "6.0.0-dev2"
+    profile: warehouse
+spec:
+  name: warehouse
+  description: >-
+    SimReady Warehouse + Nova Carter AMR scene on L40S. ClusterIP service
+    type (not the chart's default NodePort) so each session is fronted by
+    an OpenShift Route instead of an AWS NLB listener.
+  supportedApplications:
+    - name: isaac-sim
+      versions:
+        - "6.0.0-dev2"
+  chartMappings:
+    container: streamingKit.image.repository
+    container_version: streamingKit.image.tag
+  chartValues:
+    global:
+      imagePullSecrets:
+        - name: ngc-pull-secret
+      # Mounted via streamingKit.volumeMounts below. The session chart's
+      # Deployment template tooYaml-inlines global.volumes under spec.volumes.
+      volumes:
+        - name: warehouse-scenario
+          configMap:
+            name: warehouse-scenario
+    streamingKit:
+      imagePullSecrets:
+        - name: ngc-pull-secret
+      image:
+        repository: nvcr.io/nvidia/isaac-sim
+        tag: "6.0.0-dev2"
+        pullPolicy: IfNotPresent
+      service:
+        type: ClusterIP
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-L40S
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      resources:
+        requests:
+          cpu: "2"
+          memory: "8Gi"
+          nvidia.com/gpu: "1"
+        limits:
+          cpu: "8"
+          memory: "24Gi"
+          nvidia.com/gpu: "1"
+      volumeMounts:
+        - name: warehouse-scenario
+          mountPath: /scenarios
+          readOnly: true
+      # Kit honors exactly one `--exec` per invocation, so
+      # warehouse_baseline.py chains into viewport_mjpeg.py via a
+      # tail-of-module `import viewport_mjpeg` (module-level side effects
+      # start the MJPEG http + encoder threads and subscribe to Kit's
+      # update stream for viewport captures).
+      args:
+        - --exec
+        - /scenarios/warehouse_baseline.py
+      env:
+        - name: ACCEPT_EULA
+          value: "Y"
+        - name: PRIVACY_CONSENT
+          value: "Y"
+        - name: OMNI_KIT_ACCEPT_EULA
+          value: "Y"
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: "all"
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: "all"

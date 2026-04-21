@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cosmos-reason-cache
+  namespace: cosmos
+  labels:
+    app: cosmos-reason
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Cosmos-Reason2-8B weights (~16.6 GiB) + HF cache + variant tags;
+      # 60 GiB leaves headroom for parallel pulls during model re-evaluation.
+      storage: 60Gi
+  storageClassName: gp3

@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: warehouse-camera-library-init
+  namespace: warehouse-data
+  annotations:
+    # PostSync: runs after the MinIO Deployment is Ready, cleaned up on
+    # success. Safe to re-run (bucket create is idempotent; image copies
+    # are overwrites).
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 10
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: quay.io/minio/mc:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              until mc alias set local http://minio.warehouse-data.svc.cluster.local:9000 \
+                "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do
+                echo "waiting for minio endpoint..."
+                sleep 5
+              done
+              mc mb --ignore-existing local/warehouse-camera-library
+              echo "bucket ready — uploading frames..."
+              for f in /frames/empty/*.jpg /frames/pallet/*.jpg; do
+                [ -f "$f" ] || continue
+                name=$(basename "$f")
+                mc cp --quiet "$f" "local/warehouse-camera-library/$name"
+                echo "  uploaded $name"
+              done
+              mc ls local/warehouse-camera-library/
+              echo "done."
+          env:
+            - name: HOME
+              value: /tmp
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: AWS_SECRET_ACCESS_KEY
+          volumeMounts:
+            - name: frames-empty
+              mountPath: /frames/empty
+            - name: frames-pallet
+              mountPath: /frames/pallet
+      volumes:
+        - name: frames-empty
+          configMap:
+            name: warehouse-camera-frame-empty
+        - name: frames-pallet
+          configMap:
+            name: warehouse-camera-frame-pallet

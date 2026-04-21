@@ -38,3 +38,25 @@ Namespace joined the `default` Istio revision via the `istio.io/rev: default` la
 `networkpolicy.yaml` ships four policies: `default-deny-ingress` (no pod reachable until explicitly allowed), `allow-intra-namespace` (Nucleus services reach each other via Discovery), `allow-openshift-ingress` (Routes work), `allow-openshift-monitoring` (Prometheus/MCO scrape). Egress stays default-allow for Phase 1 (image pulls, NGC auth, kube-dns, Vault); Phase 2+ can tighten.
 
 When Phase-1 consumer namespaces land (USD Search, Kit, Isaac Sim, VSS, GR00T), each gets its own `allow-from-<consumer>` Policy naming the source namespace via `namespaceSelector`. Extending this file is the pattern.
+
+## Part F (Session 19 end-to-end validation)
+
+### 9. Istio mesh + WebSocket ports — **closed in Part F**
+Every Nucleus service port now declares `appProtocol: tcp` in its `Service` spec. Without it, Istio's HTTP auto-detection on WebSocket-speaking ports merged cluster-wide HTTP route configs whenever another namespace claimed the same port number (port 3100 collides with every `logging-loki-*-http` service in `openshift-logging`; port 8000 collides with six services). The resulting envoy filter chain was an HTTP proxy to the colliding service instead of a tcp_proxy pass-through to Nucleus, and WebSocket upgrades returned `400 Bad Request` from `istio-envoy` before ever reaching the Nucleus containers.
+
+`appProtocol: tcp` tells Istio "this port is opaque TCP" — the inbound listener becomes a single `tcp_proxy` filter chain, port collisions elsewhere in the cluster are ignored, and Nucleus's own WebSocket upgrade works end-to-end. The only cost is losing HTTP-level Istio metrics on those ports, which were meaningless for binary WS frames anyway.
+
+### 10. Route TLS — **closed in Part F (removed to match upstream)**
+Earlier versions of `routes.yaml` added `tls: { termination: edge, insecureEdgeTerminationPolicy: Redirect }` to every Route. That caused an end-to-end breakage: every Nucleus service's `SERVICE_DEPLOYMENTS` env advertises its `external` endpoint as `ws://<host>:80/omni/<svc>` (plain HTTP). When an `omni.client` asked Discovery "where's the API?" it got back a `ws://…:80` URL, hit the Route, got 302-redirected to `https://…`, and its WebSocket state machine derailed — the server received garbled bytes and logged `ApiRouter.parseRequest:992 Deserialization failure`. Omniverse Launcher saw this as "Failed to connect to the server."
+
+Upstream's validated `deploy-native` baseline has no `tls:` block on its Routes (plain HTTP on port 80, matching the URLs Nucleus advertises). We realigned with upstream — Routes are plain HTTP, consistent with what `SERVICE_DEPLOYMENTS` advertises.
+
+**If/when TLS is added** (Phase 2+ hardening): BOTH must change together — the Route termination policy AND every service's `SERVICE_DEPLOYMENTS` `external` URL (from `ws://host:80/…` → `wss://host:443/…`). Half a migration is worse than none.
+
+### 11. Seeding Nucleus with `omni.client` requires a Kit runtime — **closed in Part F**
+Running `omni.client.*` from a bare `python.sh -c "..."` (standalone Python with `omni.client` on PYTHONPATH) hangs on connect and never invokes the registered auth callback. The library depends on `omni.kit.async_engine` to pump the connection state machine, and that extension only starts when a full Kit app boots.
+
+The seeder at `../nucleus-seeder/` bootstraps Kit headless via `isaacsim.SimulationApp({"headless": True})` at module top, then uses `omni.client` normally. Stage-3 upload (`copy_async` to `omniverse://…`) works with `register_authentication_callback` credentials. Cost: ~60 s Kit cold-start per Job run; negligible for a one-shot seeder, and the same pattern works for any future `omni.client`-from-script tooling (asset ingestion pipelines, scripted scene assembly, USD dependency crawlers).
+
+### 12. `ingress-router` / `auth-router-gateway` — claim in §3 re-verified
+Session 19 end-to-end test (Launcher + seeder both working against the upstream-matching deploy-native topology with no NVIDIA NGINX ingress-router in front) empirically validates the §3 claim that those two services are not needed for Kit/Isaac/Launcher clients with local user/pass auth. §3 stays closed.

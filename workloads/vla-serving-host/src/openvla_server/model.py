@@ -37,10 +37,11 @@ class MockAdapter:
 class OpenvlaAdapter:
     """Real OpenVLA-7B adapter. Loads HuggingFace weights on first `infer`."""
 
-    def __init__(self, weights: str, unnorm_key: str, device: str) -> None:
+    def __init__(self, weights: str, unnorm_key: str, device: str, torch_dtype: str = "fp16") -> None:
         self._weights = weights
         self._unnorm_key = unnorm_key
         self._device = device
+        self._torch_dtype = torch_dtype
         self._model = None
         self._processor = None
         self.model_version = f"openvla-{weights.split('/')[-1]}"
@@ -52,10 +53,11 @@ class OpenvlaAdapter:
         import torch  # type: ignore[import-not-found]
         from transformers import AutoModelForVision2Seq, AutoProcessor  # type: ignore[import-not-found]
 
+        dtype = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}[self._torch_dtype]
         self._processor = AutoProcessor.from_pretrained(self._weights, trust_remote_code=True)
         self._model = AutoModelForVision2Seq.from_pretrained(
             self._weights,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=dtype,
             low_cpu_mem_usage=True,
             trust_remote_code=True,
         ).to(self._device)
@@ -71,12 +73,16 @@ class OpenvlaAdapter:
         return list(action.tolist() if hasattr(action, "tolist") else action)
 
 
-def build_adapter(mode: str, weights: str, unnorm_key: str, device: str) -> VlaAdapter:
+def build_adapter(
+    mode: str, weights: str, unnorm_key: str, device: str, torch_dtype: str = "fp16"
+) -> VlaAdapter:
     mode = mode.lower()
     if mode == "mock":
         return MockAdapter()
     if mode == "openvla":
-        return OpenvlaAdapter(weights=weights, unnorm_key=unnorm_key, device=device)
+        return OpenvlaAdapter(
+            weights=weights, unnorm_key=unnorm_key, device=device, torch_dtype=torch_dtype
+        )
     if mode in {"smolvla", "pi0"}:
         raise NotImplementedError(f"{mode} adapter lands in Phase 3 — see workloads/vla-serving-host/README.md.")
     raise ValueError(f"Unknown VLA_MODE: {mode!r}")

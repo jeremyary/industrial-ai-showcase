@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - vault-auth.yaml
+  - vault-static-secret-hf.yaml
+  - pvc.yaml
+  - deployment-reason.yaml
+  - service-reason.yaml
+  - networkpolicy.yaml

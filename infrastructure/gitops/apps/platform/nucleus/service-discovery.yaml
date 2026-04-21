@@ -16,6 +16,7 @@ spec:
     - name: discovery
       port: 3333
       targetPort: 3333
+      appProtocol: tcp
 ---
 # Source: omniverse-nucleus/templates/services/discovery.yaml
 apiVersion: apps/v1

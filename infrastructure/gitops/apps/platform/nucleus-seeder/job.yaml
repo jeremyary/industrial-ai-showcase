@@ -1,0 +1,85 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nucleus-seeder
+  namespace: omniverse-nucleus
+  labels:
+    app: nucleus-seeder
+  annotations:
+    # Let Argo re-create the Job when the script ConfigMap changes.
+    argocd.argoproj.io/sync-options: Replace=true
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: nucleus-seeder
+      annotations:
+        # One-shot seeder, not part of the mesh; Nucleus PeerAuthentication is
+        # PERMISSIVE so the plain WebSocket handshake from omni.client works
+        # directly. The sidecar-wrapped path was 15s-timeout-ing on upstream
+        # connect — no obvious root cause, skipping the mesh avoids the issue.
+        sidecar.istio.io/inject: "false"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: nucleus-seeder
+      containers:
+        - name: seeder
+          # Same image as workloads/isaac-sim/ — ships pxr.Usd + omni.client.
+          image: nvcr.io/nvidia/isaac-sim:6.0.0-dev2
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -uo pipefail
+              # SimulationApp bootstraps Kit, which wires up pxr + omni.client
+              # and starts the async engine — no manual PYTHONPATH needed.
+              cp /scripts/seed.py /tmp/seed.py
+              /isaac-sim/python.sh /tmp/seed.py
+              rc=$?
+              echo "=== seed.py exited with $rc ==="
+              [ "$rc" -ne 0 ] && sleep 1800
+              exit $rc
+          env:
+            - name: ISAAC_VERSION
+              value: "6.0"
+            - name: LOCAL_STAGING
+              value: /staging
+            # External Route — after routes.yaml had its TLS block removed
+            # to match upstream (ADR-027 / Session 19), omni.client's
+            # wss:// redirect-derailment is gone. External advertised URL
+            # is the canonical way since SERVICE_DEPLOYMENTS advertises it.
+            - name: NUCLEUS_HOST
+              value: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+            - name: NUCLEUS_USER
+              value: omniverse
+            - name: NUCLEUS_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: nucleus-passwords
+                  key: master-password
+            - name: NUCLEUS_ROOT
+              value: /Projects/showcase/assets
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: 2
+              memory: 8Gi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: staging
+              mountPath: /staging
+      imagePullSecrets:
+        - name: ngc-pull-secret
+      volumes:
+        - name: scripts
+          configMap:
+            name: nucleus-seeder-scripts
+            defaultMode: 0755
+        - name: staging
+          emptyDir:
+            sizeLimit: 20Gi

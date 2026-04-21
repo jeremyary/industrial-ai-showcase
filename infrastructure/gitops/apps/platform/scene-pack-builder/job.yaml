@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: scene-pack-builder
+  namespace: omniverse-nucleus
+  labels:
+    app: scene-pack-builder
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: scene-pack-builder
+      annotations:
+        # Same reason as nucleus-seeder: mesh-less Job, Nucleus is PERMISSIVE.
+        sidecar.istio.io/inject: "false"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: scene-pack-builder
+      containers:
+        - name: builder
+          image: nvcr.io/nvidia/isaac-sim:6.0.0-dev2
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -uo pipefail
+              cp /scripts/generate_overlay.py /tmp/generate_overlay.py
+              /isaac-sim/python.sh /tmp/generate_overlay.py
+              rc=$?
+              echo "=== generate_overlay.py exited with $rc ==="
+              [ "$rc" -ne 0 ] && sleep 1800
+              exit $rc
+          env:
+            - name: TOPOLOGY_YAML
+              value: /scripts/warehouse-topology.yaml
+            - name: OUTPUT_USDA
+              value: /tmp/warehouse_scene_pack.usda
+            - name: NUCLEUS_ROOT
+              value: omniverse://nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com/Projects/showcase/assets/Isaac/6.0
+            - name: NUCLEUS_TARGET
+              value: omniverse://nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com/Projects/showcase/scene-packs/warehouse_scene_pack.usda
+            - name: NUCLEUS_UPLOAD
+              value: "1"
+            - name: NUCLEUS_USER
+              value: omniverse
+            - name: NUCLEUS_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: nucleus-passwords
+                  key: master-password
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: 2
+              memory: 8Gi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      imagePullSecrets:
+        - name: ngc-pull-secret
+      volumes:
+        - name: scripts
+          configMap:
+            name: scene-pack-builder-scripts
+            defaultMode: 0755

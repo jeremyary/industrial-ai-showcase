@@ -32,7 +32,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: isaac-sim
-          image: nvcr.io/nvidia/isaac-sim:5.0.0
+          image: nvcr.io/nvidia/isaac-sim:6.0.0-dev2
           imagePullPolicy: IfNotPresent
           # Headless Kit runner with WebRTC livestream for viewport embedding.
           # See workloads/isaac-sim/scenarios/ for scene/scenario configs that
@@ -44,7 +44,10 @@ spec:
               set -e
               /isaac-sim/runheadless.sh \
                 --/app/livestream/webrtcEnabled=true \
-                --/app/livestream/nativeStreamerEnabled=true
+                --/app/livestream/nativeStreamerEnabled=true \
+                --/persistent/isaac/asset_root/default=http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0 \
+                --/persistent/isaac/asset_root/nvidia=http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0 \
+                --exec /scenarios/warehouse_baseline.py
           env:
             - name: ACCEPT_EULA
               value: "Y"
@@ -59,14 +62,15 @@ spec:
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: "all"
           ports:
-            - name: webrtc
-              containerPort: 49100
-              protocol: TCP
-            - name: livestream
+            # Port names use Istio's protocol-prefix convention (`tcp-*`) so
+            # the sidecar treats them as opaque TCP. Kit's livestream endpoint
+            # is WebSocket + binary media on the same port; auto-HTTP-sniffing
+            # confuses envoy and returns 503 on the initial probe.
+            - name: tcp-livestream
               containerPort: 8011
               protocol: TCP
-            - name: kit-app
-              containerPort: 8211
+            - name: tcp-webrtc
+              containerPort: 49100
               protocol: TCP
           resources:
             requests:
@@ -78,6 +82,9 @@ spec:
               memory: 24Gi
               nvidia.com/gpu: 1
           volumeMounts:
+            - name: scenarios
+              mountPath: /scenarios
+              readOnly: true
             - name: cache
               mountPath: /root/.cache/ov
               subPath: cache
@@ -101,19 +108,23 @@ spec:
           # before Kit app accepts connections. Wide initial-delay tolerances.
           readinessProbe:
             tcpSocket:
-              port: livestream
+              port: tcp-livestream
             initialDelaySeconds: 120
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 40
           livenessProbe:
             tcpSocket:
-              port: livestream
+              port: tcp-livestream
             initialDelaySeconds: 600
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 6
       volumes:
+        - name: scenarios
+          configMap:
+            name: isaac-sim-scenarios
+            defaultMode: 0444
         - name: cache
           persistentVolumeClaim:
             claimName: isaac-sim-cache

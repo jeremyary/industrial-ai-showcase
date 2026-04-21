@@ -1,0 +1,28 @@
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: isaacsim-streaming-client
+  namespace: omni-streaming
+  labels:
+    app.kubernetes.io/part-of: kit-appstreaming
+spec:
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: workloads/streaming-client/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: isaacsim-streaming-client:latest
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+  triggers: []

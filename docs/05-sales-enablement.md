@@ -19,7 +19,7 @@ The Showcase Console is the single tool Red Hat field teams use in customer enga
 ### Core concepts in the Console
 
 - **Scenarios**: the top-level units (e.g., "Warehouse — Baseline"). Each scenario encapsulates a USD scene, a fleet configuration, a policy set, and a sequence of beats.
-- **Beats**: the atomic "do X" steps inside a scenario. A beat might be "introduce bottleneck in Zone B" or "show the VSS summary for camera 3." Each beat has expected duration, audience applicability, and matching talking points.
+- **Beats**: the atomic "do X" steps inside a scenario. A beat might be "dispatch forklift mission" or "trigger aisle-3 obstruction and watch the replan." Each beat has expected duration, audience applicability, and matching talking points.
 - **Audience modes**: `novice` (Archetype A), `evaluator` (Archetype B), `expert` (Archetype C). Mode is switchable at any time; the Console re-renders accordingly.
 - **Time budget**: a countdown the seller sets at the start (e.g., "I have 15 minutes"). The Console suggests which scenarios and beat sequences fit.
 - **Depth drawers**: any UI element with more underlying detail has a "show me the architecture / data / code" drawer. Drawer content is audience-filtered.
@@ -31,7 +31,7 @@ The Showcase Console is the single tool Red Hat field teams use in customer enga
 
 Five primary views that a seller navigates:
 
-1. **Stage view** — the live demo surface. A Kit App Streaming embedded viewport dominates; analytics overlays and VSS summaries layer in. Bottom bar shows the current scenario and beat, with a Next button.
+1. **Stage view** — the live demo surface. An Isaac Sim viewport (MJPEG from the hub-side digital twin) dominates; camera-detection overlays and safety-alert badges layer in. Bottom bar shows the current scenario and beat, with demo buttons (Dispatch Mission, Drop Pallet) for presenter-driven pacing.
 2. **Architecture view** — the Mega-on-OpenShift diagram, clickable. Any component zooms in to a detail pane with talking points and depth drawers.
 3. **Lineage view** — for expert-mode conversations about MLOps. Shows model lineage, sim provenance, and MLflow links.
 4. **Fleet view** — multi-site fleet overview across spokes, with real-time status.
@@ -64,13 +64,13 @@ Three primary demo durations, each with multiple scenario variations. The seller
 
 **Audience**: Archetype A (novice) — foyer meetings, trade-show booth walk-ups, introducing the topic in a broader conversation.
 
-**Scripted path**:
+**Scripted path** (detailed narrative in `demos/warehouse-baseline/script.md`):
 - Open Stage view with "Warehouse — Baseline" pre-loaded.
-- Beat 1 (0:00–0:45): "This is a warehouse digital twin. These robots and this humanoid are running against real physics and real sensor simulation." Pan around the scene using Kit App Streaming.
-- Beat 2 (0:45–2:00): "Watch them operate against a mission stream." Trigger a scripted mission sequence. Show VSS analytics summarizing activity.
-- Beat 3 (2:00–3:30): "Same code, same signed container, deploys to the actual robot at the factory edge." Switch to edge view showing a simulated Jetson receiving the policy.
-- Beat 4 (3:30–5:00): "All of this runs on Red Hat's hybrid cloud — on-prem, air-gapped, or cloud. The NVIDIA stack is the engine; Red Hat is the operational substrate." Show architecture view with Mega components highlighted over the OpenShift substrate diagram.
-- Close with: "If any of this is on your roadmap, let's schedule a deeper conversation."
+- Beat 1 (0:00–0:45): "This is a warehouse digital twin. A forklift is picking pallets, ceiling cameras are watching the aisles, and everything you see is running on Red Hat OpenShift." Scene-establish pan.
+- Beat 2 (0:45–1:45): Presenter clicks **Dispatch Mission** — forklift drives to the aisle-3 approach-point and pauses for coordinator clearance. Narrate the detection infrastructure during the pause.
+- Beat 3 (1:45–2:30): Presenter clicks **Drop Pallet** — fake-camera switches frames, Cosmos Reason 2 detects the obstruction, Fleet Manager replans via aisle-4, forklift reroutes. The alert crosses edge→hub and the reroute crosses hub→edge — that visible crossing *is* the hybrid-cloud story.
+- Beat 4 (2:30–4:15): Architecture view briefly, topology animation, trace-correlation-ID pan. Back to Stage for the telemetry close.
+- Beat 5 (4:15–5:00): Teaser pills (retrain, multi-site, agentic) and close — "If any of this is on your roadmap, let's schedule a deeper conversation."
 
 Works live against a running cluster or as a replay.
 
@@ -108,7 +108,7 @@ What the Console exposes or suppresses based on `audience` mode.
 | Feature / View | Novice | Evaluator | Expert |
 |---|---|---|---|
 | Stage view (main scene) | ✓ full | ✓ full | ✓ full + debug overlays available |
-| VSS summaries | ✓ simplified phrasing | ✓ | ✓ with raw event JSON accessible |
+| Safety alerts / Cosmos Reason detections | ✓ simplified phrasing ("the camera saw something") | ✓ with alert confidence + model tag | ✓ with raw Kafka event JSON + prompt/response accessible |
 | Architecture view | Available, not surfaced proactively | ✓ surfaced at natural moments | ✓ always in peripheral awareness |
 | Lineage view | ✗ | Available on request | ✓ surfaced when relevant |
 | Fleet view | Simplified ("2 sites, healthy") | ✓ with metrics | ✓ full with raw Thanos queries accessible |
