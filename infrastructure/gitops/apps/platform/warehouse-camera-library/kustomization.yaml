@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: warehouse-data
+
+# Build with `--load-restrictor=LoadRestrictionsNone` so kustomize can read
+# the canonical JPEG frames from workloads/obstruction-detector/test-images/.
+# ArgoCD picks this up via the Application's
+# `spec.source.kustomize.loadRestrictions: LoadRestrictionsNone`.
+
+resources:
+  - namespace.yaml
+  - minio-credentials.yaml
+  - minio-pvc.yaml
+  - minio-deployment.yaml
+  - minio-service.yaml
+  - bucket-init-job.yaml
+
+configMapGenerator:
+  # One ConfigMap per image — a single CM holding both exceeds the 3 MiB
+  # apply-request limit (each ~1.3 MB JPEG base64-encodes to ~1.7 MB).
+  - name: warehouse-camera-frame-empty
+    files:
+      - aisle3_empty.jpg=../../../../../workloads/obstruction-detector/test-images/aisle3_empty.jpg
+  - name: warehouse-camera-frame-pallet
+    files:
+      - aisle3_pallet.jpg=../../../../../workloads/obstruction-detector/test-images/aisle3_pallet.jpg
+
+generatorOptions:
+  disableNameSuffixHash: true
