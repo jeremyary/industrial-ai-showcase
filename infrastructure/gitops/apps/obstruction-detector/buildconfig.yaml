@@ -1,0 +1,21 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: obstruction-detector
+  namespace: fleet-ops
+  labels:
+    app: obstruction-detector
+    phase: phase-1
+spec:
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: workloads/obstruction-detector/container/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: obstruction-detector:latest
+  triggers: []

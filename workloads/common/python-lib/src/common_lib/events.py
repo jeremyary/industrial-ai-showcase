@@ -101,3 +101,45 @@ class FleetTelemetry(BaseModel):
     battery_pct: float | None = Field(default=None, ge=0.0, le=100.0)
     anomaly_score: float | None = Field(default=None, ge=0.0, le=1.0)
     emitted_at: datetime = Field(default_factory=_now)
+
+
+class CameraFrameEvent(BaseModel):
+    """Single-frame payload published by the companion-side fake-camera service to
+    `warehouse.cameras.<aisle>`. Consumed by the hub-side obstruction-detector.
+
+    JPEG bytes go inline as base64 in `frame_b64`. At 1 Hz on 1920x1080 q88 JPEGs
+    (~650 KB each, ~870 KB base64) this comfortably fits Kafka's default 1 MB
+    message cap with headroom for the JSON envelope.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    frame_id: UUID = Field(default_factory=uuid4)
+    trace_id: str
+    camera_id: str = Field(description="Matches a key in warehouse-topology.yaml cameras.*")
+    aisle_id: str = Field(description="Logical aisle the camera is watching, e.g. 'aisle-3'.")
+    state: str = Field(description="Logical state the fake-camera is emitting; mirrors topology frame_library keys ('empty', 'obstructed', ...)")
+    frame_b64: str = Field(description="Base64-encoded JPEG body.")
+    emitted_at: datetime = Field(default_factory=_now)
+
+
+class SafetyAlert(BaseModel):
+    """Obstruction / safety alert emitted by obstruction-detector to
+    `fleet.safety.alerts`. Fleet Manager consumes these and replans if any
+    active mission's route crosses the alerted aisle.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    alert_id: UUID = Field(default_factory=uuid4)
+    trace_id: str
+    aisle_id: str
+    camera_id: str
+    detection_label: str = Field(description="Short noun phrase the VLM returned, e.g. 'stacked boxes'.")
+    confidence: float = Field(ge=0.0, le=1.0)
+    source_model: str = Field(description="Model that produced the detection, e.g. 'cosmos-reason-2-8b'.")
+    # Accompanies state transitions; True when the aisle is obstructed, False
+    # when it clears. Consumers can treat a False alert as a "cleared" signal.
+    obstructed: bool = True
+    detail: str = ""
+    emitted_at: datetime = Field(default_factory=_now)

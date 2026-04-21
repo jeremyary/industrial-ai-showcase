@@ -1,0 +1,8 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: obstruction-detector
+  namespace: fleet-ops
+  labels:
+    app: obstruction-detector
+    phase: phase-1
