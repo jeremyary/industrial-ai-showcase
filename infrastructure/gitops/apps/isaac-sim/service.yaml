@@ -8,17 +8,16 @@ metadata:
 spec:
   selector:
     app: isaac-sim
+  # Istio uses port `name` as a protocol hint. `tcp-*` prefix makes the sidecar
+  # treat these as opaque TCP streams — correct for Kit's WebSocket-signaling
+  # + binary-WebRTC-media traffic (envoy's HTTP auto-sniffing returns 503).
   ports:
-    - name: webrtc
-      port: 49100
-      targetPort: webrtc
-      protocol: TCP
-    - name: livestream
+    - name: tcp-livestream
       port: 8011
-      targetPort: livestream
+      targetPort: tcp-livestream
       protocol: TCP
-    - name: kit-app
-      port: 8211
-      targetPort: kit-app
+    - name: tcp-webrtc
+      port: 49100
+      targetPort: tcp-webrtc
       protocol: TCP
   type: ClusterIP

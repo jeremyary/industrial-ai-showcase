@@ -1,0 +1,12 @@
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: isaacsim-streaming-client
+  namespace: omni-streaming
+  labels:
+    app.kubernetes.io/part-of: kit-appstreaming
+    industrial-ai-showcase: "true"
+spec:
+  lookupPolicy:
+    local: true

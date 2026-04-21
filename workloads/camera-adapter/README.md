@@ -6,7 +6,7 @@
 
 ## Why this replaces VSS
 
-Per the Phase-1 story-driven audit in `docs/04-phased-plan.md`: the full Metropolis VSS 8-GPU pipeline wasn't justified by any demo beat. The narrow "event from camera" job is handled by Cosmos Reason 2 on a single L4 plus this lightweight adapter. Saves ~7 GPUs and simplifies the critical path.
+Per the Phase-1 story-driven audit in `docs/04-phased-plan.md`: the full Metropolis VSS 8-GPU pipeline wasn't justified by any demo beat. The narrow "event from camera" job is handled by Cosmos Reason 2-8B on a single L40S plus this lightweight adapter. Saves ~7 GPUs and simplifies the critical path. Per ADR-027, this adapter is being superseded by the `workloads/obstruction-detector/` pod (hub) plus the companion-side fake-camera service; camera-adapter stays in place as a smoke-test path until that cutover is complete.
 
 ## Interfaces
 

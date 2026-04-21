@@ -154,7 +154,7 @@ Entry template:
 - **Source**: OperatorHub (Red Hat).
 - **Deployment**: Operator + Kafka CR.
 - **Resource profile**: 3-broker cluster minimum on hub.
-- **Dependents**: fleet manager, mission dispatcher, Metropolis VSS consumer, agentic orchestrator.
+- **Dependents**: fleet manager, mission dispatcher, obstruction-detector, fake-camera service, Isaac Sim twin-update subscriber, agentic orchestrator.
 - **Persistence**: PVs per broker.
 - **Phase**: 1.
 - **Notes**: MirrorMaker 2 for hub ↔ spoke replication in Phase 2.
@@ -331,12 +331,12 @@ Entry template:
 - **GPU**: yes.
 - **Phase**: 2.
 
-### 31. Metropolis Video Search & Summarization (VSS) Blueprint
-- **Category**: NVIDIA
-- **Purpose**: Visual AI agents that watch camera feeds and emit semantic summaries and alerts.
-- **Source**: NVIDIA AI Blueprint; Helm-deployable.
-- **GPU**: yes.
-- **Dependents**: fleet manager (consumes events), the Showcase Console (shows summaries).
+### 31. Cosmos Reason 2-8B (VLM perception)
+- **Category**: NVIDIA (model) + Platform (serving)
+- **Purpose**: **Qwen3-VL-derivative** vision-language model for obstruction / safety perception on camera frames. Replaces the earlier Metropolis VSS plan per ADR-027 — the narrow "event from camera" job doesn't justify VSS's 8-GPU footprint.
+- **Source**: `nvidia/Cosmos-Reason2-8B` served via **`vllm/vllm-openai:v0.11.0`** (Qwen3-VL support lands in 0.11.0; 0.8.x doesn't load it), OpenAI-compatible `/v1/chat/completions` with image + prompt, `--reasoning-parser qwen3`.
+- **GPU**: 1 × **L40S** (bfloat16, `--max-model-len=8192`, `--gpu-memory-utilization=0.9`). NVIDIA specs 32 GB minimum; does not fit L4's 24 GB. The 2B variant was trialed on L4 and failed the quality bar (couldn't distinguish empty from pallet-blocked aisle), so 8B on L40S is the Phase-1 choice.
+- **Dependents**: obstruction-detector pod (consumes frames and calls Cosmos Reason; publishes `fleet.safety.alerts`), Showcase Console (shows detection overlays).
 - **Phase**: 1.
 
 ### 32. GR00T N1.7 served via vLLM
@@ -360,10 +360,10 @@ Entry template:
 
 ### 34. Fleet Manager Service
 - **Category**: Integration
-- **Purpose**: Receives situational events from Metropolis VSS and WMS, decides dispatch, issues missions to robots.
-- **Source**: custom (Python, FastAPI + LangGraph for decision policies).
-- **Dependencies**: Kafka, robot-brain serving endpoints, Nucleus (for current world state).
-- **Dependents**: mission dispatcher, Showcase Console state.
+- **Purpose**: Receives `fleet.safety.alerts` (from the obstruction-detector) + `fleet.events` + WMS missions, decides dispatch, issues missions and reroutes. Phase-1 replan-on-alert logic: when an active mission's route crosses an alerted zone, replan via an alternate aisle instead of issuing the pending approach-point clearance.
+- **Source**: custom (Python, FastAPI; LangGraph upgrade in Phase 3 per ADR-005).
+- **Dependencies**: Kafka, robot-brain serving endpoints (via Mission Dispatcher), Nucleus (for current world state), `warehouse-topology.yaml`.
+- **Dependents**: mission dispatcher, Showcase Console state, Isaac Sim twin-update subscriber.
 - **Phase**: 1.
 - **Notes**: kept deliberately vendor-neutral — integrations to specific WMS/MES systems live as adapters, not in the core service.
 
@@ -437,9 +437,9 @@ Entry template:
 
 ### 43. Warehouse Reference USD Scene
 - **Category**: Asset
-- **Purpose**: The canonical demo scene — a small warehouse with zones for inbound, storage, picking, outbound.
-- **Source**: authored from a combination of NVIDIA sample assets and our own layout.
-- **Storage**: Nucleus + mirrored to Git LFS for portability.
+- **Purpose**: The canonical demo scene — NVIDIA's digital-twin-branded small warehouse with aisles, docks, and loading zones.
+- **Source**: `Isaac/Environments/Digital_Twin_Warehouse/small_warehouse_digital_twin.usd` (44 MB) from the Isaac Sim 6.0 asset CDN. Composed with a scene-pack overlay USD (see #46a) that places the forklift, approach-point markers, aisle signage, and cameras.
+- **Storage**: fetched from Isaac assets CDN once, then re-hosted on our Nucleus per ADR-027 to keep Nucleus in the architectural story.
 - **Phase**: 1.
 
 ### 44. Unitree G1 USD + Policy Bundle
@@ -448,15 +448,57 @@ Entry template:
 - **Source**: Unitree's published descriptions + conversions.
 - **Phase**: 1 (sim-only); 4+ (hardware, if pursued).
 
-### 45. Nova Carter AMR USD
+### 45. Forklift_A01 USD
 - **Category**: Asset
-- **Purpose**: Autonomous mobile robot for the warehouse scenario, paired with NVIDIA's published Nova Carter description.
-- **Source**: NVIDIA sample.
+- **Purpose**: Autonomous forklift (`fl-07` in scenarios) — the right actor for the "retrieve pallet from Dock-B" warehouse narrative. Replaces Nova Carter throughout per ADR-027 (AMRs are delivery platforms; forklifts pick pallets).
+- **Source**: `NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Equipment/Forklifts/Forklift_A01_PR_V_NVD_01.usd` (B variant also available).
 - **Phase**: 1.
 
-### 46. Sensor Assets (cameras, lidars)
+### 46. Pallet and Cargo Assets
 - **Category**: Asset
-- **Purpose**: USD representations of industrial sensors placed in the warehouse scene for sensor simulation.
+- **Purpose**: USD pallets + cargo variants (cardboard boxes on pallet, wood crate on pallet) placed in the scene; the cardboard-boxes-on-pallet prim is the "dropped pallet" that materializes in aisle-3 when the obstruction scenario fires.
+- **Source**: `NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Pallets/`, `.../Cardboard_Boxes_on_Pallet/`, `.../Wood_Crate_on_Pallet/`.
+- **Phase**: 1.
+
+### 46a. Scene-Pack Overlay USD
+- **Category**: Asset
+- **Purpose**: Overlay USD that references `small_warehouse_digital_twin.usd` and places the Forklift_A01 prim, approach-point markers, aisle signage, cameras, and docks per `warehouse-topology.yaml` coordinates. The scene-pack is what the Isaac Sim runner actually loads; the raw warehouse USD is never opened directly in Phase 1.
+- **Storage**: Nucleus.
+- **Phase**: 1.
+
+### 46b. warehouse-topology.yaml
+- **Category**: Asset / config
+- **Purpose**: Single source of truth for aisle/dock/approach-point/camera coordinates + forklift id. Imported by wms-stub, Fleet Manager, Mission Dispatcher, scene-pack overlay USD generator, and the Console. Prevents drift between components referencing named locations.
+- **Storage**: Git (`workloads/warehouse/warehouse-topology.yaml`).
+- **Phase**: 1.
+
+### 46c. Fake-Camera Service (companion)
+- **Category**: Runtime service
+- **Purpose**: Python service on the companion cluster. Publishes AI-generated photorealistic warehouse JPEGs to `warehouse.cameras.aisle3` (and siblings) at ~1 Hz, simulating on-site cameras. HTTP `POST /state` endpoint switches the emitted frame (steady: `aisle3_empty.jpg`; triggered: `aisle3_pallet.jpg`). Reads the image library from MinIO on the hub. Per ADR-027.
+- **Source**: `workloads/fake-camera/` (new in Phase 1).
+- **Phase**: 1.
+
+### 46d. Obstruction-Detector Service (hub)
+- **Category**: Runtime service
+- **Purpose**: Dedicated pod (not folded into Fleet Manager — perception is a distinct role per ADR-027) that consumes `warehouse.cameras.aisle3`, calls Cosmos Reason 2-8B via OpenAI-compatible `/v1/chat/completions` with image + prompt, parses the fenced JSON response, and publishes `fleet.safety.alerts` on positive detections.
+- **Source**: `workloads/obstruction-detector/` (new in Phase 1).
+- **Phase**: 1.
+
+### 46e. Waypoint Planner Module (inside Mission Dispatcher)
+- **Category**: Runtime library
+- **Purpose**: Emits pose updates at 5 Hz (configurable via env var) along the current mission's route. Handles mobile-base navigation in the Phase-1 stack; OpenVLA is not called for navigation (per ADR-027, VLAs aren't trained for mobile-base nav).
+- **Source**: `workloads/mission-dispatcher/src/.../waypoint_planner.py` (new module in Phase 1).
+- **Phase**: 1.
+
+### 46f. Twin-Update Subscriber (inside Isaac Sim scenario)
+- **Category**: Runtime / Kit scenario module
+- **Purpose**: Consumes `warehouse.telemetry.forklifts.*` + `fleet.safety.alerts` + `warehouse.cameras.*` and reflects reality in the twin — moves the forklift prim to reported pose, places the pallet prim when an alert fires. Replaces the Phase-0 camera-orbit smoke test.
+- **Source**: `workloads/isaac-sim/scenarios/twin_update.py` (new in Phase 1).
+- **Phase**: 1.
+
+### 46g. Sensor Assets (cameras, lidars)
+- **Category**: Asset
+- **Purpose**: USD representations of industrial sensors placed in the warehouse scene via the scene-pack overlay.
 - **Source**: NVIDIA sample library + custom placements.
 - **Phase**: 1.
 
@@ -466,7 +508,7 @@ Entry template:
 
 ### 47. "Warehouse — Baseline" Scenario Pack
 - **Phase**: 1.
-- **Contents**: warehouse scene, Nova Carter AMRs, Unitree G1 humanoid for restocking, fixed cameras, baseline policies, baseline WMS mission stream, baseline dashboards. The starting point for all scripted demos.
+- **Contents**: `small_warehouse_digital_twin.usd` + scene-pack overlay (Forklift_A01 as `fl-07`, Unitree G1 for background presence, fixed cameras, approach-point markers, aisle signage, docks), `warehouse-topology.yaml`, baseline policies, WMS mission stream with the aisle-3-obstruction variant, baseline dashboards. The starting point for all scripted demos.
 
 ### 48. "Warehouse — Bottleneck and Recovery" Scenario Pack
 - **Phase**: 2.

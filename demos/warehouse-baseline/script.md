@@ -21,24 +21,18 @@ Everything else is off-surface for this demo. No security, no MLOps, no agentic.
 
 ## Scene + robots + components
 
-Per `assets/README.md`:
-- Scene: NVIDIA SimReady Warehouse Pack (warehouse interior with racks, aisles, loading zones).
-- Primary robot: Nova Carter AMR (pallet pickup / aisle navigation).
+Per `assets/README.md` and ADR-027:
+- Scene: NVIDIA Digital Twin Warehouse (`Isaac/Environments/Digital_Twin_Warehouse/small_warehouse_digital_twin.usd`), composed with a scene-pack overlay that places forklift, approach-point markers, aisle signage, cameras, and docks per `warehouse-topology.yaml`.
+- Primary robot: Forklift_A01 (scenario id `fl-07`) — retrieves pallets from docks via aisles.
 - Secondary robot: Unitree G1 humanoid (visible in scene but not active in the 5-min script).
-- Simulated cameras mounted on ceilings at key vantage points.
+- Cameras: fake-camera service on the companion publishes AI-generated photorealistic warehouse frames to Kafka at ~1 Hz; the twin shows clean USD. That twin-vs-reality separation is intentional — real cameras show grime, twins don't.
 
 Components exercised (and only these):
-- Nucleus (serving the warehouse USD scene).
-- Isaac Sim (headless runner, streaming Kit App Streaming viewport into the Console).
-- Kit App Streaming (web viewport in the Console).
-- Cosmos Reason 2 + custom RTSP→Kafka adapter (video events from simulated cameras). Replaces VSS per `docs/04-phased-plan.md` edit (task #20).
-- Kafka topic `fleet.events` (camera output).
-- Fleet Manager (consumes events, emits missions).
-- Kafka topic `fleet.missions`.
-- Mission Dispatcher on companion cluster (receives missions, routes to local VLA).
-- Open VLA + scene reasoning on companion (emits robot action).
-- Kafka topic `fleet.telemetry` (robot reports back).
-- Showcase Console (shows all of the above as one coherent picture).
+- **Hub**: Nucleus (scene assets), Isaac Sim on L40S (digital twin + MJPEG viewport), Cosmos Reason 2-8B on L40S (Qwen3-VL-derivative; 2B trial on L4 failed the quality bar, see ADR-027), obstruction-detector pod (Kafka camera consumer → Cosmos Reason → safety-alert publisher), Fleet Manager (replan-on-alert), WMS-stub (mission trigger), MinIO (camera-image library), Showcase Console.
+- **Companion**: fake-camera service (Kafka publisher + HTTP state endpoint), Mission Dispatcher with Waypoint Planner (5 Hz pose emission), OpenVLA host-native (manipulation policy, called on pick — not for navigation).
+- **Cross-cluster**: MirrorMaker2 federation on `warehouse.cameras.*`, `warehouse.telemetry.forklifts.*`, `fleet.missions`, `fleet.safety.alerts`.
+
+The only scripted inputs during the demo are two presenter buttons. Everything downstream is real Kafka events and real inference.
 
 ## Minute-by-minute script
 
@@ -46,41 +40,49 @@ Components exercised (and only these):
 
 **Narration** (seller speaks; the exact words are a template, not a teleprompter):
 
-> "What you're looking at is a warehouse. A mobile robot is moving pallets, a humanoid is standing by for tasks that need dexterity, and ceiling cameras are watching the aisles. Every piece you see — the simulation, the AI that interprets the cameras, the decisioning, the commands going back to the robots — is running on Red Hat OpenShift. Not on cloud services somewhere. On this cluster, which could be sitting in that customer's facility." *[differentiator #1 surfaces here, one sentence, no dwelling]*
+> "What you're looking at is a warehouse. A forklift is picking pallets, a humanoid is standing by for tasks that need dexterity, and ceiling cameras are watching the aisles. Every piece you see — the simulation, the AI that interprets the cameras, the decisioning, the commands going back to the robot — is running on Red Hat OpenShift. Not on cloud services somewhere. On this cluster, which could be sitting in that customer's facility." *[differentiator #1 surfaces here, one sentence, no dwelling]*
 
 **Note (post-review)**: the prior version of this narration generalized to "logistics, automotive parts, manufacturing line." Archetype-A persona review (automotive OEM) flagged this as a tell — the visual is warehouse, not an assembly line, and hedging loses credibility. Commit to warehouse here; cross-vertical credibility comes from the Phase-2 scene-pack decision (second scene) and the 20-min brownfield beat, not from overgeneralized narration on a warehouse visual.
 
-**Console view**: Stage view. The Kit App Streaming viewport dominates the screen, showing the warehouse interior from an overhead camera angle. Nova Carter AMR visible in an aisle. Unitree G1 visible at a workstation. Lower bar shows two cluster-health dots labeled "Hub — factory operations" and "Companion — robot edge."
+**Console view**: Stage view. The Isaac Sim viewport (MJPEG from the hub-side digital twin) dominates the screen, showing the warehouse interior from an overhead camera angle. Forklift `fl-07` visible at its home position. Unitree G1 visible at a workstation. Lower bar shows two cluster-health dots labeled "Hub — factory operations" and "Companion — robot edge." Two demo buttons visible: **Dispatch Mission** and **Drop Pallet**.
 
-### Minute 0:45 – 1:45 — The event loop happens, narrated
+### Minute 0:45 – 1:45 — Dispatch, then narrate the detection infrastructure
+
+**Narration** (presenter clicks **Dispatch Mission**):
+
+> "I'm dispatching a mission — retrieve pallet A47 from Dock-B. The forklift is picking up the mission, routing via aisle-3." *[forklift drives partway down aisle-3 and stops]* "It's paused at the aisle-3 approach-point. This is standard practice in real AMR fleets — robots wait at approach-points for clearance from the fleet coordinator before entering shared corridors. While it's waiting, let me show you what's actually happening behind the camera feed: every frame from these ceiling cameras is flowing from the on-site edge into a visual reasoning model at HQ, which is watching for anything that would make this aisle unsafe."
+
+**Console view**: Stage view. Forklift prim visibly drives up aisle-3 and stops at the marked approach-point. Event stream on the right shows mission dispatch → telemetry ticks coming back at 5 Hz. A subtle indicator on camera 2 shows "frames flowing, no alert."
+
+### Minute 1:45 – 2:30 — The interrupt fires, the system replans
+
+**Narration** (presenter clicks **Drop Pallet**):
+
+> "Something just shifted into the aisle." *[pallet prim appears in aisle-3 in the twin; camera-2 indicator flips]* "The camera saw it, the visual reasoning model flagged it — 'aisle-3, obstruction' — and that safety alert flowed to the Fleet Manager. It's replanning: the forklift can't proceed via aisle-3, so instead of the clearance it was waiting for, it's getting a reroute — aisle-4. Watch."
+
+**Console view**: Pallet prim materializes in aisle-3 (driven by the real `fleet.safety.alerts` event reaching the Isaac Sim twin-update subscriber). Overlay on camera 2 shows "Alert: aisle-3-obstruction — conf 0.91" with the model tag "cosmos-reason-2." Event stream shows the alert → Fleet Manager replan → reroute mission. Forklift prim pulls back and takes aisle-4 to Dock-B.
+
+*[differentiator #3 surfaces as the visual itself — the alert crossed edge→hub and the reroute crossed hub→edge]*
+
+### Minute 2:30 – 3:30 — The hybrid topology, narrated
 
 **Narration**:
 
-> "Watch camera 2. A pallet has just shifted into an aisle where an AMR — that's the mobile robot — is scheduled to pass. In a traditional setup, that's a safety incident. Here —" *[pause, wait for the event]* "— the camera feed is being interpreted by an edge AI model that understands scenes. It just emitted an event: 'aisle 3, obstruction.' That event flowed into the fleet manager, which made a decision: re-route the AMR. The new mission was dispatched, and the AMR is taking an alternate path now."
+> "Here's the part Red Hat makes possible. The heavy visual reasoning runs at HQ on a data-center GPU — that's where you want big models. The fleet coordinator runs at HQ because it aggregates signal from every warehouse you operate. But the robot's control runtime runs on the edge node physically at the warehouse, because you don't want 300 milliseconds of cloud round-trip between an alert and a reroute on a moving forklift. Two clusters, one operational model — same Kubernetes, same images, same tooling — because real factories have both a datacenter and an edge, and this mirrors that honestly. You can't do this on a cloud service; the edge piece is physically at the factory."
 
-**Console view**: Stage view remains. Overlay appears on camera 2 showing "Event: aisle-3-obstruction — confidence 0.91." Arrow animation shows the event flowing to "Fleet Manager" panel, which emits a "Mission: reroute-AMR-07" pill that flows to the "Companion cluster" panel. AMR visibly changes path in the viewport.
+**Console view**: Stage view transitions briefly to Architecture view (a simple two-cluster topology diagram with a link between them). Camera frames animate companion → hub; the safety alert animates hub → hub (perception on hub); the reroute mission animates hub → companion; telemetry animates companion → hub. Transition back to Stage view.
 
-*[differentiator #3 surfaces as the visual itself — the mission crossing cluster boundaries is the demo]*
-
-### Minute 1:45 – 2:45 — The robot executes, we see the hybrid topology
+### Minute 3:30 – 4:15 — Telemetry + observability as the closing concrete
 
 **Narration**:
 
-> "Here's the part Red Hat makes possible. The mission came from a cluster that represents your factory's datacenter — Fleet Manager, training pipelines, the coordination layer. The decision to act went to a second cluster — the one that represents the factory-floor edge, closer to the robot itself. That's where the robot-brain model runs, where local inference happens, where the robot actually gets its command. Same Kubernetes, same images, same tooling, same operations team — but two clusters, because real factories have datacenter and edge. You can't do this on a cloud service; the edge piece is physically at the factory."
-
-**Console view**: Stage view transitions briefly to Architecture view (a simple two-cluster topology diagram with a link between them). Mission pill animation flows from Hub → Companion along the link, then a telemetry pill animates Companion → Hub as the AMR reports progress. Transition back to Stage view.
-
-### Minute 2:45 – 3:45 — Telemetry + observability as the closing concrete
-
-**Narration**:
-
-> "The AMR just finished the re-routed mission. That telemetry came back to the hub — here it is in the right panel. Every camera event, every fleet decision, every robot action carries a correlation ID. If the AMR does something unexpected tomorrow, an engineer pulls that trace — which policy version, which event, which decision, which command. That's the kind of auditability OT environments need."
+> "The forklift just reached Dock-B on the rerouted path. Every event you just saw — the camera frame, the safety alert, the replan, the reroute, the telemetry coming back — carries a correlation ID. If the forklift does something unexpected tomorrow, an engineer pulls that trace: which policy version, which model inferred what, which decision, which command. That's the kind of auditability OT environments need."
 
 **Console view**: Stage view. A mini-panel on the right shows a trace with an actual correlation ID (e.g., `trace-id: 4f3a…c917`): event → decision → mission → robot action → completion. Timestamps visible. One specific telemetry entry highlighted. Phase 1 ships real OpenTelemetry trace IDs — not mock — so this beat survives scrutiny.
 
 **Note (post-review)**: Archetype-B persona review flagged the original "trace back through every step" line as a promise the visual didn't substantiate. Fix: show a real correlation ID on-screen, matching what the OTel pipeline actually produces.
 
-### Minute 3:45 – 4:30 — The "what else is possible" teaser
+### Minute 4:15 – 4:45 — The "what else is possible" teaser
 
 **Narration**:
 
@@ -88,7 +90,7 @@ Components exercised (and only these):
 
 **Console view**: Stage view with three pill-teasers appearing at the top of the panel, each labeled — "Retrain & promote", "Multi-site rollout", "Agentic operator". These are not clickable in the novice-mode 5-min script; they foreshadow the 20-min and 60-min demos.
 
-### Minute 4:30 – 5:00 — Close
+### Minute 4:45 – 5:00 — Close
 
 **Narration**:
 
@@ -100,10 +102,10 @@ Components exercised (and only these):
 
 ```
 BEAT 00:00 — differentiator #1 (on-prem / air-gap)
-BEAT 01:30 — differentiator #3 (hybrid → edge → robot) — core visual
-BEAT 02:45 — differentiator #3 (topology diagram)
+BEAT 01:45 — differentiator #3 (hybrid → edge → robot) — core visual (alert edge→hub, reroute hub→edge)
+BEAT 02:30 — differentiator #3 (topology diagram)
 BEAT 03:30 — differentiator #5 (OT-grade provenance — one-line surface only; not core)
-BEAT 04:30 — differentiator #8 (day-2 lifecycle)
+BEAT 04:45 — differentiator #8 (day-2 lifecycle)
 ```
 
 ## Hard constraints
@@ -112,28 +114,34 @@ BEAT 04:30 — differentiator #8 (day-2 lifecycle)
 - **No MLflow / model-registry UI**. 20-min territory.
 - **No security-checkbox content**. No FIPS, no STIG, no Sigstore. If the customer asks, redirect to 60-min follow-up.
 - **No multi-site visible**. Hub + companion is the topology; no spokes. Multi-site is 20-min territory.
-- **No scene authoring, no custom assets**. Uses SimReady warehouse + Nova Carter + Unitree G1 only.
+- **No scene authoring beyond the scene-pack overlay**. Uses Digital_Twin_Warehouse + Forklift_A01 + Unitree G1 + stock pallets only.
 - **No live model training or inference-metric dashboards**. The trace panel shows operational events, not model metrics.
-- **Kit App Streaming viewport is pre-recorded fallback when live cluster is unavailable** — per charter success criterion that offline fallback must look seamless.
+- **Presenter controls pacing via the two buttons** — no hard-coded timers. The approach-point pause is narrated, not clocked.
+- **Offline-fallback recording must be seamless** — per charter success criterion. Script length above is a target; the recorded fallback matches.
 
 ## What this demo's existence gates (scope on Phase 1 implementation)
 
-For the 5-min script to be runnable, Phase 1 must deliver:
+For the 5-min script to be runnable, Phase 1 must deliver (per `docs/04-phased-plan.md` and ADR-027):
 
-1. SimReady warehouse scene loaded into Nucleus.
-2. Isaac Sim 6.0 headless runner rendering the warehouse + Nova Carter AMR with simulated cameras.
-3. Kit App Streaming Helm chart deployed and embedded in Console.
-4. Cosmos Reason 2 + custom RTSP-to-Kafka adapter producing `fleet.events` from simulated camera frames.
-5. Kafka (AMQ Streams) with topics: `fleet.events`, `fleet.missions`, `fleet.telemetry`.
-6. Fleet Manager v1 (Python + FastAPI, rule-based decisioning).
-7. Mission Dispatcher on companion consuming `fleet.missions`.
-8. Open VLA serving on companion (KServe + vLLM). Scene reasoning optional for Phase 1 if the VLA handles it directly; otherwise Cosmos Reason 2 also runs here.
-9. WMS Stub on hub emitting scripted scenarios (for deterministic demo runs).
-10. Showcase Console skeletal — Stage view with Kit viewport embed, event-trace right panel, two-cluster topology dots, three closing teaser pills.
+1. `small_warehouse_digital_twin.usd` + Forklift_A01 + pallet variants uploaded to Nucleus.
+2. Scene-pack overlay USD composing the above with approach-point markers, aisle signage, cameras, and docks.
+3. `warehouse-topology.yaml` as the single source of truth for coordinates.
+4. Isaac Sim 6.0 runner on hub with the MJPEG viewport server and the twin-update subscriber (consumes telemetry + alerts).
+5. AI-generated photorealistic warehouse frames (`aisle3_empty.jpg`, `aisle3_pallet.jpg`, siblings) staged on MinIO.
+6. Fake-camera service on companion publishing to `warehouse.cameras.aisle3` with HTTP `POST /state` endpoint.
+7. Cosmos Reason 2-8B on hub L40S (served via vLLM 0.11.0 + `--reasoning-parser qwen3`).
+8. Obstruction-detector pod on hub consuming camera frames and publishing `fleet.safety.alerts`.
+9. Fleet Manager v1 with replan-on-alert logic.
+10. Mission Dispatcher on companion with the Waypoint Planner module (5 Hz pose emission, configurable).
+11. OpenVLA host-native on companion Fedora host — called on pick for manipulation policy (not for navigation).
+12. Kafka (AMQ Streams) with MirrorMaker2 federation across `warehouse.cameras.*`, `warehouse.telemetry.forklifts.*`, `fleet.missions`, `fleet.safety.alerts`.
+13. WMS Stub on hub (`fl-07`, `fire_at_seconds=0`, topology-yaml-sourced ids).
+14. Showcase Console skeletal — Stage view with MJPEG canvas, two demo buttons (Dispatch Mission, Drop Pallet), event-trace right panel, two-cluster topology dots, three closing teaser pills.
 
 **Not required for the 5-min demo** (and therefore not Phase 1 critical path):
 - USD Search API (cut).
-- Full VSS 8-GPU pipeline (cut; Cosmos Reason replaces for the narrow "event from camera" job).
+- Full Metropolis VSS 8-GPU pipeline (cut; Cosmos Reason 2-8B replaces for the narrow "event from camera" job).
+- Kit App Streaming WebRTC surfaced in the UI (plumbing stays, UI hidden — MJPEG is the Phase-1 path).
 - MLflow backend beyond what's needed to serve the VLA (artifact store; no training demo in Phase 1).
 - Isaac Lab training pipeline (Phase 2).
 - LangGraph + MCP + Llama Stack (Phase 3).
@@ -143,6 +151,7 @@ For the 5-min script to be runnable, Phase 1 must deliver:
 
 ## Open items to resolve before recording the demo as an offline-fallback
 
-- Which specific warehouse-floor layout from the SimReady pack. The pack has multiple configurations; pick one.
-- Whether the "aisle 3 obstruction" event is triggered by a pre-scripted scenario in the Isaac Sim scene (WMS-Stub driven) or by an actual Cosmos Reason detection from a live camera frame. Pre-scripted is more reliable for a 5-min sales demo; live detection is more impressive for Archetype C. For the 5-min novice version, **use pre-scripted deterministic scenario**.
-- Exact copy of the seller's narration — the template above is guidance; Phase 1 item 12 (first scripted demo artifact) refines this with specific wording.
+- **Nucleus credentials** for USD upload. Fallback: bundle USD into the Isaac Sim Kit container image.
+- **AI image set**: user produces the `aisle3_empty.jpg` / `aisle3_pallet.jpg` (and siblings) photorealistic set with SDXL/Flux/Midjourney; we wire the MinIO bucket + upload path.
+- **Cosmos Reason 2-8B runtime** (validated on 2026-04-20): Qwen3-VL-derivative, served via `vllm/vllm-openai:v0.11.0` + `--reasoning-parser qwen3` + `--max-model-len=8192` on L40S (bfloat16, `gpu-memory-utilization=0.9`). Per-frame latency ~3-6 s. The 2B variant was trialed on L4 and missed pallet detection outright; 8B is the Phase-1 choice.
+- **Narration copy**: the template above is guidance; refine with specific wording when the pipeline is end-to-end working.

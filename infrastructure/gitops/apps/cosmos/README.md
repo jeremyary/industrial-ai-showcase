@@ -1,16 +1,24 @@
 # apps/cosmos
 
-Cosmos family deployments — Phase 1 lands **Cosmos-Reason1-7B** for scene reasoning via vLLM's OpenAI-compatible API.
+Cosmos family deployments — Phase 1 lands **Cosmos-Reason2-8B** (Qwen3-VL-derivative) on L40S for perception / obstruction detection via vLLM's OpenAI-compatible API (per ADR-027; supersedes the earlier Cosmos-Reason1-7B on L4 deployment).
 
-## Phase 1 — cosmos-reason
+Trial history (2026-04-20): 2B on L4 was trialed first (cheaper class, simpler schedule) but missed pallet detection in photorealistic warehouse-aisle images — 0.97 "no obstruction" confidence on both empty and pallet-blocked frames. 8B on L40S got it right: 0.98 clear for the empty frame, 0.99 "large box on the floor, partially blocking the pathway" for the pallet frame. ~3-6 s per-frame latency.
 
-- Runtime: `vllm/vllm-openai:v0.8.5` (Qwen2-VL-class multimodal decoder support).
-- Model: `nvidia/Cosmos-Reason1-7B` pulled from HuggingFace on first start (~14 GiB weights). HF token is mounted from Vault-backed Secret `hf-token` if set.
-- GPU: 1 × L4 via `nvidia.com/gpu.product=NVIDIA-L4` nodeSelector + toleration for the L4 taint.
-- Memory: bfloat16, `--gpu-memory-utilization=0.9`, `--max-model-len=4096`, one image per prompt.
+## Phase 1 — cosmos-reason (8B on L40S, validated)
+
+- Runtime: `vllm/vllm-openai:v0.11.0` — Qwen3-VL support landed in 0.11.0 (0.8.x won't load these models).
+- Model: `nvidia/Cosmos-Reason2-8B` pulled from HuggingFace on first start. HF token required (gated repo); mounted from Vault-backed Secret `hf-token` via VaultStaticSecret (`kv/hf/token`).
+- Served-model-name: `cosmos-reason-2` (stable across 2B/8B variants so downstream clients don't flip).
+- GPU: 1 × L40S via `nvidia.com/gpu.product=NVIDIA-L40S` nodeSelector. NVIDIA specs 32 GB minimum; doesn't fit L4's 24 GB.
+- Memory: bfloat16, `--gpu-memory-utilization=0.9`, `--max-model-len=8192` (image tokens exceed the 4096 default for warehouse-resolution frames), `--limit-mm-per-prompt '{"image":1}'` (JSON syntax required by vLLM 0.11).
+- Reasoning parser: `--reasoning-parser qwen3` per NVIDIA's documented invocation.
 - Cache: 60 GiB PVC at `/cache/hf`.
 
-Invoked by `workloads/camera-adapter/` — POSTs base64-encoded camera frames to `POST /v1/chat/completions` with a scene-reasoning prompt; parses the response into a `FleetEvent` on `fleet.events`.
+## Trial harness
+
+`workloads/obstruction-detector/trial.py` sends each image under `test-images/` to the endpoint (via `oc port-forward -n cosmos svc/cosmos-reason 8000:8000`) and prints the parsed JSON verdict. Used to re-validate the quality bar if the model ever changes.
+
+Invoked by the hub-side **obstruction-detector** service (consumes `warehouse.cameras.aisle3`, calls `POST /v1/chat/completions` with image + prompt, parses the fenced JSON response, publishes `fleet.safety.alerts`). The Phase-1-transitional `workloads/camera-adapter/` still speaks to the same endpoint and will be retired once obstruction-detector + companion fake-camera are wired end-to-end.
 
 ### Why vLLM + HF instead of NGC NIM
 

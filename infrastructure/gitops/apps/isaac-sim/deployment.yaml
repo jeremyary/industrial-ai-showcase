@@ -62,14 +62,15 @@ spec:
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: "all"
           ports:
-            - name: webrtc
-              containerPort: 49100
-              protocol: TCP
-            - name: livestream
+            # Port names use Istio's protocol-prefix convention (`tcp-*`) so
+            # the sidecar treats them as opaque TCP. Kit's livestream endpoint
+            # is WebSocket + binary media on the same port; auto-HTTP-sniffing
+            # confuses envoy and returns 503 on the initial probe.
+            - name: tcp-livestream
               containerPort: 8011
               protocol: TCP
-            - name: kit-app
-              containerPort: 8211
+            - name: tcp-webrtc
+              containerPort: 49100
               protocol: TCP
           resources:
             requests:
@@ -107,14 +108,14 @@ spec:
           # before Kit app accepts connections. Wide initial-delay tolerances.
           readinessProbe:
             tcpSocket:
-              port: livestream
+              port: tcp-livestream
             initialDelaySeconds: 120
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 40
           livenessProbe:
             tcpSocket:
-              port: livestream
+              port: tcp-livestream
             initialDelaySeconds: 600
             periodSeconds: 30
             timeoutSeconds: 10

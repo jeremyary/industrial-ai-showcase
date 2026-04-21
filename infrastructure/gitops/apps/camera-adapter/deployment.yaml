@@ -39,7 +39,7 @@ spec:
             - name: COSMOS_ENDPOINT_URL
               value: http://cosmos-reason.cosmos.svc.cluster.local:8000/v1/chat/completions
             - name: COSMOS_MODEL
-              value: cosmos-reason-1
+              value: cosmos-reason-2
             - name: RTSP_URIS
               value: ""
             - name: FRAME_SAMPLE_HZ

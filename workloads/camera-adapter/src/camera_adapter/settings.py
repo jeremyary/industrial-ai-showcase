@@ -15,7 +15,7 @@ class CameraAdapterSettings(ServiceSettings):
         default="http://cosmos-reason.cosmos.svc.cluster.local:8000/v1/chat/completions",
         description="Cosmos Reason (vLLM OpenAI-compatible) endpoint for scene reasoning.",
     )
-    cosmos_model: str = Field(default="cosmos-reason-1")
+    cosmos_model: str = Field(default="cosmos-reason-2")
     cosmos_request_timeout_s: float = Field(default=20.0)
 
     # Comma-separated RTSP URIs. Phase 1 default is empty — Isaac Sim doesn't

@@ -16,7 +16,8 @@
   "dependencies": {
     "@fastify/cors": "^11.0.1",
     "fastify": "^5.2.1",
-    "kafkajs": "^2.2.4"
+    "kafkajs": "^2.2.4",
+    "undici": "^6.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

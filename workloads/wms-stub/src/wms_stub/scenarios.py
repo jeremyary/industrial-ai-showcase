@@ -41,13 +41,15 @@ class Scenario:
 WAREHOUSE_BASELINE_AISLE3 = Scenario(
     name="warehouse-baseline-aisle3-obstruction",
     description=(
-        "The canonical 5-min demo beat. At 45s a pallet drifts into aisle-3 where "
-        "AMR-07 is scheduled to pass. Fleet Manager should emit a reroute mission; "
-        "Mission Dispatcher should call the host VLA and echo telemetry back to hub."
+        "Canonical demo beat. A pallet has drifted into aisle-3 where AMR-07 is "
+        "scheduled to pass. Fleet Manager should emit a reroute mission; Mission "
+        "Dispatcher should call the host VLA and echo telemetry back to hub. The "
+        "wms-stub event fires immediately on button-press — pacing the demo is "
+        "the speaker's job, not the code's."
     ),
     events=(
         ScheduledEvent(
-            fire_at_seconds=45.0,
+            fire_at_seconds=0.0,
             event_class=EventClass.AISLE_OBSTRUCTION,
             location="aisle-3",
             confidence=0.91,

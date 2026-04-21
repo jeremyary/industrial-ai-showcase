@@ -10,6 +10,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      # Cosmos-Reason1-7B weights + HF cache: ~30 GiB with room for variant tags.
+      # Cosmos-Reason2-8B weights (~16.6 GiB) + HF cache + variant tags;
+      # 60 GiB leaves headroom for parallel pulls during model re-evaluation.
       storage: 60Gi
   storageClassName: gp3

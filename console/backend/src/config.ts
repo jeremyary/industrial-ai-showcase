@@ -7,6 +7,14 @@ export interface AppConfig {
   kafkaConsumerGroup: string;
   kafkaTopics: string[];
   wmsStubBaseUrl: string;
+  kasManagerBaseUrl: string;
+  kasIngressDomain: string;
+  kasDefaultAppId: string;
+  kasDefaultAppVersion: string;
+  kasDefaultProfile: string;
+  turnUrl: string;
+  turnUsername: string;
+  turnCredential: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -23,5 +31,15 @@ export function loadConfig(): AppConfig {
       (process.env.KAFKA_TOPICS ?? "fleet.events,fleet.missions,fleet.ops.events,fleet.telemetry").split(","),
     wmsStubBaseUrl:
       process.env.WMS_STUB_BASE_URL ?? "http://wms-stub.fleet-ops.svc.cluster.local:8082",
+    kasManagerBaseUrl:
+      process.env.KAS_MANAGER_BASE_URL ?? "http://streaming.omni-streaming.svc.cluster.local:80",
+    kasIngressDomain:
+      process.env.KAS_INGRESS_DOMAIN ?? "",
+    kasDefaultAppId: process.env.KAS_DEFAULT_APP_ID ?? "isaac-sim",
+    kasDefaultAppVersion: process.env.KAS_DEFAULT_APP_VERSION ?? "5.1.0",
+    kasDefaultProfile: process.env.KAS_DEFAULT_PROFILE ?? "warehouse",
+    turnUrl: process.env.TURN_URL ?? "",
+    turnUsername: process.env.TURN_USERNAME ?? "",
+    turnCredential: process.env.TURN_CREDENTIAL ?? "",
   };
 }

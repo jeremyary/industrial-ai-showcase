@@ -42,7 +42,7 @@ Aligned to the three demo scripts as scope gates (see `docs/04-phased-plan.md`).
 
 **Cut from Phase 1** (story-driven audit — no demo consumer):
 - ~~`usd-search/`~~ — cut; no downstream consumer in any of the three demo scripts.
-- ~~`vss/`~~ — cut; full Metropolis VSS 8-GPU pipeline replaced by Cosmos Reason 2 on a single L4 for the narrow "event from camera" job.
+- ~~`vss/`~~ — cut; full Metropolis VSS 8-GPU pipeline replaced by Cosmos Reason 2-8B on a single L40S for the narrow "event from camera" job.
 - ~~`groot-serving/`~~ — renamed to `vla-serving-pod/` and deferred to Phase 3 (Thor arrival); licensing per `docs/licensing-gates.md` keeps GR00T pluggable-not-primary.
 
 ## Shared substrate

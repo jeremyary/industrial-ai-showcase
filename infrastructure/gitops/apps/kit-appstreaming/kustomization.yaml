@@ -9,3 +9,7 @@ resources:
   - vault-auth.yaml
   - vault-static-secret-ngc.yaml
   - ngc-pullsecret-render-job.yaml
+  - default-sa-anyuid.yaml
+  - session-companion.yaml
+  - coturn.yaml
+  - warehouse-scenario.yaml

@@ -28,6 +28,7 @@ import {
 } from "@patternfly/react-core";
 import type { AudienceMode, FleetMessage, Topology } from "./types.js";
 import { fetchScenarios, fetchTopology, runScenario, subscribeEvents } from "./api.js";
+import { StageCard } from "./Stage.js";
 
 const MAX_EVENTS = 200;
 
@@ -96,64 +97,73 @@ export function App(){
     >
       <PageSection>
         <Flex spaceItems={{ default: "spaceItemsLg" }} alignItems={{ default: "alignItemsStretch" }}>
-          <FlexItem flex={{ default: "flex_1" }}>
-            <TopologyCard topology={topology} connected={connected} />
+          <FlexItem
+            flex={{ default: "flex_1" }}
+            style={{ maxWidth: 380, minWidth: 280, alignSelf: "stretch" }}
+          >
+            <Stack hasGutter style={{ height: "100%" }}>
+              <StackItem>
+                <TopologyCard topology={topology} connected={connected} />
+              </StackItem>
+              <StackItem>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Drive the demo</CardTitle>
+                  </CardHeader>
+                  <CardBody style={{ overflow: "visible" }}>
+                    <Stack hasGutter>
+                      <StackItem>
+                        <Select
+                          id="scenario-select"
+                          isOpen={scenarioOpen}
+                          selected={scenarioSelection}
+                          onSelect={(_e, v) => {
+                            setScenarioSelection(String(v));
+                            setScenarioOpen(false);
+                          }}
+                          toggle={(ref: React.Ref<MenuToggleElement>) => (
+                            <MenuToggle
+                              ref={ref}
+                              onClick={() => setScenarioOpen((o) => !o)}
+                              isExpanded={scenarioOpen}
+                              isFullWidth
+                            >
+                              {scenarioSelection ?? "choose a scenario"}
+                            </MenuToggle>
+                          )}
+                        >
+                          {scenarios.map((s) => (
+                            <SelectOption key={s} value={s}>
+                              {s}
+                            </SelectOption>
+                          ))}
+                        </Select>
+                      </StackItem>
+                      <StackItem>
+                        <Button variant="primary" onClick={onRun} isDisabled={!scenarioSelection} isBlock>
+                          Fire scenario
+                        </Button>
+                      </StackItem>
+                      {lastTraceId ? (
+                        <StackItem>
+                          <Label color="blue" style={{ maxWidth: "100%" }}>
+                            trace_id: {lastTraceId}
+                          </Label>
+                        </StackItem>
+                      ) : null}
+                    </Stack>
+                  </CardBody>
+                </Card>
+              </StackItem>
+              <StackItem isFilled style={{ minHeight: 0, overflow: "hidden" }}>
+                <EventsCard events={events} />
+              </StackItem>
+            </Stack>
           </FlexItem>
-          <FlexItem flex={{ default: "flex_2" }}>
+          <FlexItem flex={{ default: "flex_4" }}>
             <StageCard />
           </FlexItem>
-          <FlexItem flex={{ default: "flex_2" }}>
-            <EventsCard events={events} />
-          </FlexItem>
         </Flex>
-      </PageSection>
-
-      <PageSection>
-        <Card>
-          <CardHeader>
-            <CardTitle>Drive the demo</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <Flex spaceItems={{ default: "spaceItemsMd" }} alignItems={{ default: "alignItemsCenter" }}>
-              <FlexItem>
-                <Select
-                  id="scenario-select"
-                  isOpen={scenarioOpen}
-                  selected={scenarioSelection}
-                  onSelect={(_e, v) => {
-                    setScenarioSelection(String(v));
-                    setScenarioOpen(false);
-                  }}
-                  toggle={(ref: React.Ref<MenuToggleElement>) => (
-                    <MenuToggle
-                      ref={ref}
-                      onClick={() => setScenarioOpen((o) => !o)}
-                      isExpanded={scenarioOpen}
-                    >
-                      {scenarioSelection ?? "choose a scenario"}
-                    </MenuToggle>
-                  )}
-                >
-                  {scenarios.map((s) => (
-                    <SelectOption key={s} value={s}>
-                      {s}
-                    </SelectOption>
-                  ))}
-                </Select>
-              </FlexItem>
-              <FlexItem>
-                <Button variant="primary" onClick={onRun} isDisabled={!scenarioSelection}>
-                  Fire scenario
-                </Button>
-              </FlexItem>
-              {lastTraceId ? (
-                <FlexItem>
-                  <Label color="blue">trace_id: {lastTraceId}</Label>
-                </FlexItem>
-              ) : null}
-            </Flex>
-          </CardBody>
-        </Card>
       </PageSection>
 
       {audience !== "novice" && topology?.teasers.length ? (
@@ -173,7 +183,7 @@ export function App(){
 
 function TopologyCard({ topology, connected }: { topology: Topology | null; connected: boolean }){
   return (
-    <Card isFullHeight>
+    <Card>
       <CardHeader>
         <CardTitle>Topology</CardTitle>
       </CardHeader>
@@ -213,39 +223,14 @@ function ClusterPanel({ title, workloads }: { title: string; workloads: string[]
   );
 }
 
-function StageCard(){
-  return (
-    <Card isFullHeight>
-      <CardHeader>
-        <CardTitle>Stage</CardTitle>
-      </CardHeader>
-      <CardBody>
-        <div
-          style={{
-            aspectRatio: "16/9",
-            background: "linear-gradient(135deg, #1e1e1e, #3a3a3a)",
-            color: "#ddd",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 6,
-          }}
-        >
-          <span>Kit App Streaming viewport — lands in Phase 1 tail (Isaac Sim + Kit).</span>
-        </div>
-      </CardBody>
-    </Card>
-  );
-}
-
 function EventsCard({ events }: { events: FleetMessage[] }){
   const grouped = useMemo(() => groupByTrace(events), [events]);
   return (
-    <Card isFullHeight>
+    <Card>
       <CardHeader>
         <CardTitle>Live fleet events</CardTitle>
       </CardHeader>
-      <CardBody style={{ maxHeight: "60vh", overflowY: "auto" }}>
+      <CardBody style={{ height: "100%", overflowY: "auto" }}>
         {events.length === 0 ? (
           <em>no events yet — fire a scenario</em>
         ) : (

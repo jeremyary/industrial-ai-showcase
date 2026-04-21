@@ -1,0 +1,249 @@
+# Session companion — watches streaming-kit Deployments/Services in
+# omni-streaming and reconciles two things the upstream KAS session chart
+# can't express on OpenShift:
+#
+#   1. Injects ENVOY_UID=0 onto the envoy-sidecar container. The chart
+#      hardcodes envoyproxy/envoy:v1.18-latest, which tries to chown
+#      /dev/stdout at entrypoint. chown on /dev/stdout fails even as root
+#      (/dev is managed by the kubelet); setting ENVOY_UID=0 short-circuits
+#      that chown block in the Envoy entrypoint script.
+#
+#   2. Creates an OpenShift Route with TLS passthrough to the session
+#      Service's `signaling` port. This is OSD's substitute for the AWS NLB
+#      chart. UDP media (47998) can't traverse a Route, so Kit falls back
+#      to WebRTC-over-TCP on the single passthrough Route.
+#
+# This controller is meant to be boring: one bash loop, ose-cli image, 5s
+# poll. A Kyverno mutation would be equivalent but adds an operator.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: session-companion
+  namespace: omni-streaming
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: session-companion
+  namespace: omni-streaming
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: session-companion
+  namespace: omni-streaming
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: session-companion
+subjects:
+  - kind: ServiceAccount
+    name: session-companion
+    namespace: omni-streaming
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: session-companion-script
+  namespace: omni-streaming
+data:
+  reconcile.sh: |
+    #!/bin/bash
+    set -uo pipefail
+    : "${INGRESS_DOMAIN:?INGRESS_DOMAIN env required}"
+    : "${NAMESPACE:=omni-streaming}"
+    : "${POLL_INTERVAL:=5}"
+
+    echo "[session-companion] starting; ns=${NAMESPACE} domain=${INGRESS_DOMAIN} interval=${POLL_INTERVAL}s"
+
+    while true; do
+      # 1. ENVOY_UID=0 on envoy-sidecar + strategy=Recreate on streaming-kit
+      #    deployments. The chart defaults to RollingUpdate with maxSurge=1,
+      #    which deadlocks under single-L40S pressure: the old RS's pre-patch
+      #    pod crashloops on envoy's chown failure while holding the GPU, the
+      #    new RS's patched pod waits forever for that GPU to free. Recreate
+      #    strategy scales the old RS to 0 before spawning the new one.
+      for dep in $(oc -n "$NAMESPACE" get deploy \
+            -l app.kubernetes.io/component=streaming-kit \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+        has_env=$(oc -n "$NAMESPACE" get deploy "$dep" \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="envoy-sidecar")].env[*].name}' \
+            2>/dev/null | tr ' ' '\n' | grep -c '^ENVOY_UID$')
+        strategy=$(oc -n "$NAMESPACE" get deploy "$dep" \
+            -o jsonpath='{.spec.strategy.type}' 2>/dev/null)
+        if [[ "$strategy" != "Recreate" ]]; then
+          echo "[session-companion] setting strategy=Recreate on $dep"
+          oc -n "$NAMESPACE" patch deploy "$dep" --type=json \
+            -p='[{"op":"replace","path":"/spec/strategy","value":{"type":"Recreate"}}]' \
+            >/dev/null 2>&1 || true
+        fi
+        if [[ "$has_env" == "0" ]]; then
+          echo "[session-companion] patching ENVOY_UID=0 onto $dep"
+          oc -n "$NAMESPACE" set env "deployment/$dep" -c envoy-sidecar ENVOY_UID=0 >/dev/null
+          sid=$(oc -n "$NAMESPACE" get deploy "$dep" \
+                -o jsonpath='{.metadata.labels.sessionId}' 2>/dev/null)
+          for pod in $(oc -n "$NAMESPACE" get pod \
+                -l "sessionId=${sid}" \
+                -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+            echo "[session-companion] evicting pre-patch pod $pod"
+            oc -n "$NAMESPACE" delete pod "$pod" --force --grace-period=0 >/dev/null 2>&1 || true
+          done
+        fi
+      done
+
+      # 2. Per-session Route (TLS passthrough → signaling port).
+      for svc in $(oc -n "$NAMESPACE" get svc \
+            -l app.kubernetes.io/component=streaming-kit \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+        sid=$(oc -n "$NAMESPACE" get svc "$svc" \
+              -o jsonpath='{.metadata.labels.sessionId}' 2>/dev/null)
+        [[ -z "$sid" ]] && continue
+        route="kas-${sid}"
+        if ! oc -n "$NAMESPACE" get route "$route" >/dev/null 2>&1; then
+          echo "[session-companion] creating route $route -> $svc:signaling"
+          # Edge termination: HAProxy speaks TLS to the browser, plain TCP
+          # to Envoy on port 49100. Envoy TCP-proxies to Kit signaling on
+          # 8011 (plain HTTP/WS). Passthrough won't work because neither
+          # Envoy nor Kit terminate TLS. OSD also blocks spec.host without
+          # routes/custom-host, so we let the ingress controller auto-assign.
+          oc -n "$NAMESPACE" create route edge "$route" \
+            --service="$svc" \
+            --port=signaling >/dev/null && \
+          oc -n "$NAMESPACE" label "route/$route" \
+            "sessionId=${sid}" \
+            "app.kubernetes.io/component=streaming-kit-route" \
+            --overwrite >/dev/null && \
+          oc -n "$NAMESPACE" annotate "route/$route" \
+            "haproxy.router.openshift.io/timeout=1h" \
+            --overwrite >/dev/null
+        fi
+
+        # 2b. Per-session MJPEG Service + Route. The session chart's default
+        # Service doesn't expose the viewport-mjpeg port (8090), so we create
+        # a sibling Service here targeting the same pod selector, then an
+        # edge-terminated Route in front of it for the Console's <img> tag.
+        mjpeg_svc="mjpeg-${sid}"
+        if ! oc -n "$NAMESPACE" get svc "$mjpeg_svc" >/dev/null 2>&1; then
+          echo "[session-companion] creating mjpeg service $mjpeg_svc"
+          oc -n "$NAMESPACE" create service clusterip "$mjpeg_svc" \
+            --tcp=8090:8090 >/dev/null && \
+          oc -n "$NAMESPACE" patch svc "$mjpeg_svc" --type=json \
+            -p="[{\"op\":\"replace\",\"path\":\"/spec/selector\",\"value\":{\"sessionId\":\"${sid}\"}}]" \
+            >/dev/null && \
+          oc -n "$NAMESPACE" label "svc/$mjpeg_svc" \
+            "sessionId=${sid}" \
+            "app.kubernetes.io/component=streaming-kit-mjpeg" \
+            --overwrite >/dev/null
+        fi
+        mjpeg_route="mjpeg-${sid}"
+        if ! oc -n "$NAMESPACE" get route "$mjpeg_route" >/dev/null 2>&1; then
+          echo "[session-companion] creating mjpeg route $mjpeg_route -> $mjpeg_svc:8090"
+          oc -n "$NAMESPACE" create route edge "$mjpeg_route" \
+            --service="$mjpeg_svc" \
+            --port=8090 >/dev/null && \
+          oc -n "$NAMESPACE" label "route/$mjpeg_route" \
+            "sessionId=${sid}" \
+            "app.kubernetes.io/component=streaming-kit-mjpeg-route" \
+            --overwrite >/dev/null && \
+          oc -n "$NAMESPACE" annotate "route/$mjpeg_route" \
+            "haproxy.router.openshift.io/timeout=1h" \
+            --overwrite >/dev/null
+        fi
+      done
+
+      # 3. Garbage-collect orphan routes + mjpeg services when the
+      #    underlying streaming-kit Service has gone away.
+      for selector in "streaming-kit-route" "streaming-kit-mjpeg-route"; do
+        for route in $(oc -n "$NAMESPACE" get route \
+              -l "app.kubernetes.io/component=${selector}" \
+              -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+          sid=$(oc -n "$NAMESPACE" get route "$route" \
+                -o jsonpath='{.metadata.labels.sessionId}' 2>/dev/null)
+          [[ -z "$sid" ]] && continue
+          if ! oc -n "$NAMESPACE" get svc \
+              -l "sessionId=${sid},app.kubernetes.io/component=streaming-kit" \
+              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null | grep -q .; then
+            echo "[session-companion] deleting orphan route $route"
+            oc -n "$NAMESPACE" delete route "$route" >/dev/null 2>&1 || true
+          fi
+        done
+      done
+      for mjpeg_svc in $(oc -n "$NAMESPACE" get svc \
+            -l app.kubernetes.io/component=streaming-kit-mjpeg \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+        sid=$(oc -n "$NAMESPACE" get svc "$mjpeg_svc" \
+              -o jsonpath='{.metadata.labels.sessionId}' 2>/dev/null)
+        [[ -z "$sid" ]] && continue
+        if ! oc -n "$NAMESPACE" get svc \
+            -l "sessionId=${sid},app.kubernetes.io/component=streaming-kit" \
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null | grep -q .; then
+          echo "[session-companion] deleting orphan mjpeg svc $mjpeg_svc"
+          oc -n "$NAMESPACE" delete svc "$mjpeg_svc" >/dev/null 2>&1 || true
+        fi
+      done
+
+      sleep "$POLL_INTERVAL"
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: session-companion
+  namespace: omni-streaming
+  labels:
+    app.kubernetes.io/name: session-companion
+    app.kubernetes.io/part-of: kit-appstreaming
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: session-companion
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: session-companion
+    spec:
+      serviceAccountName: session-companion
+      containers:
+        - name: reconcile
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command: ["/bin/bash", "/scripts/reconcile.sh"]
+          env:
+            - name: INGRESS_DOMAIN
+              value: apps.jary-qs-0323.7w5j.p1.openshiftapps.com
+            - name: NAMESPACE
+              value: omni-streaming
+            - name: POLL_INTERVAL
+              value: "5"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: session-companion-script
+            defaultMode: 0755

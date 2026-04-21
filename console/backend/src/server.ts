@@ -4,6 +4,7 @@ import fastifyCors from "@fastify/cors";
 
 import { loadConfig } from "./config.js";
 import { FleetStream, type FleetMessage } from "./kafkaStream.js";
+import { registerStreamRoutes } from "./stream.js";
 
 const config = loadConfig();
 const fastify = Fastify({
@@ -54,12 +55,19 @@ fastify.get("/api/scenarios", async () => {
   return resp.json();
 });
 
+registerStreamRoutes(fastify, config);
+
 fastify.get("/api/events", async (_request, reply) => {
   reply.raw.setHeader("Content-Type", "text/event-stream");
   reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
   reply.raw.setHeader("Connection", "keep-alive");
   reply.raw.setHeader("X-Accel-Buffering", "no");
   reply.raw.flushHeaders();
+  // Disable Nagle's algorithm so each SSE event chunk flushes to the TCP
+  // socket immediately. Without this, Node buffers small writes (~40ms+)
+  // before sending — enough that a whole scenario's events bunch into
+  // one batch delivered on completion.
+  reply.raw.socket?.setNoDelay(true);
 
   const onMessage = (msg: FleetMessage): void => {
     reply.raw.write(`event: message\ndata: ${JSON.stringify(msg)}\n\n`);

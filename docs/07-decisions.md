@@ -273,7 +273,7 @@ When a new material decision is made, add an entry. When a decision is supersede
 - Provides the "customer parity" demonstration — the reference running on the same substrate a customer would run in their factory datacenter.
 - Hosts OpenShift Virtualization + vGPU Kit workstations *if* that capability is unavailable on this specific OSD instance (TBD — verify early in Phase 0).
 
-Everything else — Nucleus, Isaac Sim, GR00T serving, Cosmos NIMs, VSS, fleet manager, MCP servers, the LangGraph orchestrator, Llama Stack governance, the Showcase Console, ACM hub, cluster-scoped Sigstore admission, full NetworkPolicy mesh — runs on the OSD hub where cluster-admin makes it straightforward.
+Everything else — Nucleus, Isaac Sim (digital twin per ADR-027), GR00T serving, Cosmos NIMs, Cosmos Reason 2-8B (perception), obstruction-detector, fleet manager, MCP servers, the LangGraph orchestrator, Llama Stack governance, the Showcase Console, ACM hub, cluster-scoped Sigstore admission, full NetworkPolicy mesh — runs on the OSD hub where cluster-admin makes it straightforward.
 
 **Consequences**:
 - The companion cluster is justified on merits (self-managed customer parity, MachineConfig safety, air-gap integrity) rather than forced by OSD permission limits.
@@ -318,13 +318,13 @@ No custom labels. No taint+toleration layer on top — GFD's labels are the auth
 **L40S-targeted workloads** (use `nodeSelector: { nvidia.com/gpu.product: NVIDIA-L40S }`):
 - Omniverse Kit App Streaming render session
 - Isaac Sim live demo instance
+- Cosmos Reason 2-8B (VLM for perception / obstruction detection — Qwen3-VL-derivative; trial confirmed 2B on L4 lacks visual acuity for warehouse-aisle obstruction detection; 8B needs L40S per NVIDIA spec)
 - GR00T N1.7 serving
 - Cosmos Predict 2.5 NIM
 - Cosmos Transfer NIM
 - Isaac Lab training workers
 
 **L4-targeted workloads** (use `nodeSelector: { nvidia.com/gpu.product: NVIDIA-L4 }`):
-- Metropolis VSS VLM
 - LangGraph agent brain LLM (when selected model fits 24 GB)
 - USD Search API embedding generation
 - USD Code / USD Verify NIMs
@@ -571,6 +571,50 @@ A second alternative — iGPU passthrough into the SNO VM via VFIO — was consi
 - Phase 1 work-item 10 in `04-phased-plan.md` — rewritten to reflect host-native serving, bridge-network wiring, and Ansible-managed podman systemd unit.
 - `docs/licensing-gates.md` — OpenVLA remains primary; GR00T remains optional-pluggable; SmolVLA + π0 added as pre-provisioned pluggable alternatives for the 60-min live-swap beat.
 - Future Thor-arrival ADR will formalize the second edge pattern when the hardware is in hand.
+
+---
+
+## ADR-027: Warehouse-obstruction demo as a real closed-loop across hub + companion
+
+**Status**: Accepted
+
+**Context**: Phase 1's 5-min demo originally imagined a single Isaac Sim process on the hub emitting scripted camera events that Fleet Manager consumed directly. Session-18 planning retired that in favor of a real event-driven pipeline. Driving forces:
+
+1. **"Smoke and mirrors" was explicitly rejected.** The showcase's value is demonstrating a substrate real customers can ship on; a scripted choreography where buttons trigger pre-recorded outcomes doesn't substantiate anything.
+2. **The companion cluster's role was at risk of being faked as hub namespaces** — a suggested simplification for presenter portability. Rejected; the hub↔edge split is load-bearing for differentiator #3 and must stay real.
+3. **Companion hardware can't run Isaac Sim.** The GMKtec Evo X-2 is Strix Halo / gfx1151 (AMD iGPU, no NVIDIA GPU); Isaac Sim requires CUDA + Omniverse RTX. Hosting the digital twin on the hub (where L40S lives) is the only option for Phase 1. Phase-2+ AGX Thor changes this.
+4. **A single "obstruction" scenario needs presenter-controlled pacing** — a hard-coded timer kills the narration. Industrial AMR fleets use approach-point pauses for traffic coordination; that real pattern solves both the pacing problem and the architectural-parity problem.
+
+**Decision**: For Phase 1, the warehouse-obstruction demo is wired as follows:
+
+- **Hub (OSD, "HQ data center") runs**: Isaac Sim on L40S as digital twin, Cosmos Reason 2-8B on L40S for VQA obstruction detection (see trial note below), a dedicated `obstruction-detector` pod consuming camera frames and calling Cosmos Reason (separate from Fleet Manager — perception is its own service role), Fleet Manager with replan-on-alert logic, WMS-stub, Showcase Console, MinIO for the camera-image library, Nucleus for USD assets.
+- **Companion ("on-site warehouse edge") runs**: a fake-camera service publishing AI-generated photorealistic warehouse photos to Kafka at ~1 Hz (with an HTTP control endpoint for state switching), the Mission Dispatcher with a new Waypoint Planner module (5 Hz pose emission, configurable), OpenVLA host-native for manipulation policy (not mobile-base navigation — Waypoint Planner handles navigation), and the companion side of Kafka federation.
+- **Digital twin stays on hub** for Phase 1. In real deployments the twin co-locates with GPU hardware; the data-center digital-twin pattern is industry-standard (Siemens Teamcenter Digital Reality Viewer, the Mega Blueprint reference, Foxconn). Architecture is not locked out of moving Isaac Sim to companion when Thor arrives.
+- **Robot is Forklift_A01 (`fl-07`), not Nova Carter.** Forklifts are the right actor for a "retrieve pallet" narrative; AMRs are delivery platforms that don't pick pallets. Nova Carter references throughout scenarios/events/Console UI are retired.
+- **Warehouse USD** is `Isaac/Environments/Digital_Twin_Warehouse/small_warehouse_digital_twin.usd` (44 MB, NVIDIA's digital-twin-branded warehouse) fetched from Isaac assets CDN once, then re-hosted on Nucleus so Nucleus stays in the story.
+- **Camera frames are AI-generated photorealistic images** (SDXL/Flux/Midjourney class), not renders from Isaac Sim. The twin-vs-reality visual separation is realistic — real cameras show grime, the twin shows clean USD. That separation reinforces the digital-twin narrative rather than weakening it.
+- **Cosmos Reason 2-8B on L40S supersedes Cosmos Reason 1-7B on L4.** Cosmos-Reason2 is a Qwen3-VL-derivative (not Qwen2.5-VL as initially assumed); requires **vLLM ≥ 0.11.0** and the `--reasoning-parser qwen3` invocation. NVIDIA specs 32 GB minimum; does not fit L4's 24 GB. A trial of Cosmos-Reason2-**2B** on L4 confirmed it lacks the visual acuity to detect a pallet obstruction in a photorealistic warehouse aisle (0.97 "no obstruction" confidence on both empty and pallet-blocked images). The **8B on L40S** is the Phase-1 path: same `cosmos-reason` namespace, served-model-name `cosmos-reason-2` (stable across variants so downstream clients don't flip), bfloat16, `--max-model-len=8192` (image-token footprint exceeds the 4096 default), `--gpu-memory-utilization=0.9`, `--limit-mm-per-prompt '{"image":1}'` (JSON syntax required by vLLM 0.11).
+- **`warehouse-topology.yaml` is the single source of truth** for aisle/dock/approach-point/camera coordinates + forklift id. Imported by every component that references a named location — wms-stub scenarios, Fleet Manager, Mission Dispatcher, scene-pack overlay USD, Console.
+- **Approach-point pause pattern for presenter pacing**: forklift drives to the aisle-3 approach-point and pauses awaiting coordinator clearance (real AMR traffic-management behavior — Omron, Seegrid, MiR, AutoGuide all do this). Presenter narrates during the pause for as long as needed, then clicks "Drop Pallet" which switches the fake-camera's published frame. Cosmos Reason detects, Fleet Manager replans with aisle-4, forklift reroutes. Replan-in-flight is preserved as the demo's core beat.
+
+**Consequences**:
+
+- **Phase 1 work breakdown expands** with four new services/assets: fake-camera (companion), obstruction-detector (hub), Waypoint Planner module inside Mission Dispatcher, twin-update subscriber inside the Isaac Sim scenario. `warehouse-topology.yaml` and a scene-pack overlay USD join the asset set.
+- **Cosmos Reason upgrade validated 2026-04-20.** Reason2 is Qwen3-VL-derivative (not Qwen2.5-VL as initially believed); vLLM image bumped from `v0.8.5` to `v0.11.0`. Args changed: added `--reasoning-parser qwen3`, changed `--limit-mm-per-prompt` to JSON syntax, raised `--max-model-len` from 4096 to 8192. The 2B variant was trialed on L4 and failed the visual-acuity bar; 8B on L40S is the Phase-1 choice.
+- **Federation latency is narrated, not hidden.** MirrorMaker2 adds 200-800 ms between alert and reroute; that's realistic HQ↔edge behavior and part of the talk track.
+- **OpenVLA's role is clarified**: it represents the manipulation policy (pick/place/grasp — where 7-DOF action vectors make sense), called in the loop on pick. It does not drive mobile-base navigation; the Waypoint Planner does. This matches how real AMR stacks layer VLA on top of Nav2-class planners.
+- **Camera-orbit smoke test retires** once real telemetry drives forklift motion in the twin.
+- **WebRTC "Open full Isaac Sim" path stays plumbed but hidden from UI** — revisited post-demo. MJPEG viewport-capture remains the Console's Stage view.
+- **No Phase-2+ or later ADR is blocked.** When AGX Thor arrives on companion, Isaac Sim moves to companion, the `warehouse.cameras.*` federation hop drops, camera streams stay where they'd originate IRL. This ADR does not lock that out.
+
+**Supersedes / interacts with**:
+
+- ADR-017 — companion-cluster strategic rationale intact; Session 18 concretizes what companion runs for the warehouse demo.
+- ADR-025 — companion-as-robot-edge role extended with fake-camera + Waypoint Planner responsibilities.
+- ADR-026 — OpenVLA host-native serving unaffected; its role in the pipeline is now explicit (manipulation, not navigation).
+- Phase 1 work-items 3, 6, 7, 8, 9 in `04-phased-plan.md` — rewritten to reflect the split services and topology.
+- `demos/warehouse-baseline/script.md` — rewritten for the approach-point-pause + presenter-button narrative.
+- `docs/02-component-catalog.md` — Nova Carter entry retired; Forklift_A01, fake-camera, obstruction-detector, Waypoint Planner, twin-update subscriber, warehouse-topology.yaml, scene-pack overlay USD added.
 
 ---
 

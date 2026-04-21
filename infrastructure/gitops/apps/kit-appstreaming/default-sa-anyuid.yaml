@@ -1,0 +1,26 @@
+# KAS Session Manager spawns each session via a Flux HelmRelease whose
+# targetNamespace is fixed at `omni-streaming` (see values-manager.yaml —
+# nv/svc/streaming/_csp.py hardcodes that as its pod-search namespace).
+# The session chart does not declare a ServiceAccount, so session pods
+# run as `default`. Two containers need elevated-UID clearance:
+#
+#   - streaming-kit (Isaac Sim / Kit): image USER is `ubuntu` (UID 1000)
+#     with scripts whose mode isn't world-exec; runs cleanly under anyuid.
+#   - envoy-sidecar (envoyproxy/envoy:v1.18-latest): entrypoint runs
+#     `chown /dev/stdout /dev/stderr` as root; without ENVOY_UID=0 it also
+#     needs anyuid to reach UID 0. session-companion.yaml injects the env
+#     var; this RoleBinding grants the SCC.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: default-anyuid
+  namespace: omni-streaming
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: omni-streaming

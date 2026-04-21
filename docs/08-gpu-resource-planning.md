@@ -65,12 +65,13 @@ Each entry includes class assignment and rationale.
 - **Footprint**: 1 GPU per worker; scales to 2–3 workers for data-parallel training.
 - **Mode**: bursty; runs during explicit training windows (Mode C). Must not run concurrently with a live demo's Kit + Isaac Sim allocation.
 
-### L4-class consumers
-
-#### GC-6: Metropolis VSS
-- **Class**: L4. VSS uses a VLM for summarization; comfortably fits 24 GB and is inference-characteristic.
+#### GC-6: Cosmos Reason 2-8B (VLM perception)
+- **Class**: L40S. 8B **Qwen3-VL-derivative** model in bfloat16; NVIDIA specs 32 GB minimum. `--max-model-len=8192` (image-token footprint exceeds the 4096 default). Requires **vLLM ≥ 0.11.0** + `--reasoning-parser qwen3`.
 - **Footprint**: 1 GPU.
-- **Mode**: warm during demos exercising camera-driven situational awareness (most of them).
+- **Mode**: warm during demos exercising camera-driven situational awareness (the Phase-1 warehouse-obstruction beat and its Phase-2+ variants).
+- **Notes**: supersedes the earlier Metropolis VSS slot per ADR-027. Consumed by the hub-side obstruction-detector pod. The 2B variant was trialed on L4 and failed the quality bar (couldn't distinguish empty from pallet-blocked aisle); 8B on L40S is the Phase-1 choice.
+
+### L4-class consumers
 
 #### GC-8: USD Search API embedding
 - **Class**: L4. Embedding generation is lightweight and batch-tolerant.
@@ -97,12 +98,12 @@ The cluster operates in a named mode at any time. The Showcase Console backend o
 L40S allocation:
 - L40S-1 → GC-1 Kit App Streaming render session (demo-critical)
 - L40S-2 → GC-2 Isaac Sim live demo (demo-critical)
-- L40S-3 → rotating: GC-3 GR00T, or GC-4/GC-5 Cosmos when the scenario exercises synthetic data
+- L40S-3 → GC-6 Cosmos Reason 2-8B (warm during Phase-1 warehouse demo)
+- L40S-4 → rotating: GC-3 GR00T, or GC-4/GC-5 Cosmos when the scenario exercises synthetic data (Phase 2+ humanoid / synthetic-data scenarios)
 
 L4 allocation:
-- L4-1 → GC-6 Metropolis VSS (warm)
-- L4-2 → GC-10 agent brain (Phase 3+) or GC-9 USD Code/Verify rotating slot
-- L4-3 → free / bursty (USD Search embeddings, small NIMs, scale-from-zero workloads)
+- L4-1 → GC-10 agent brain (Phase 3+) or GC-9 USD Code/Verify rotating slot
+- L4-2 → free / bursty (USD Search embeddings, small NIMs, scale-from-zero workloads)
 
 All demo-critical workloads run warm; rotating slots cycle on scenario transitions with visible "staging next scenario" pauses (20–40 seconds) covered by the Console's transition screens.
 
@@ -110,8 +111,8 @@ All demo-critical workloads run warm; rotating slots cycle on scenario transitio
 
 Degradation is class-specific:
 
-- **L40S degraded (one L40S down)**: L40S-3 rotating slot is unavailable. Scenarios requiring GR00T serving concurrent with Kit streaming + Isaac Sim fall back to replay mode for the GR00T-exercising beats. Kit streaming + Isaac Sim remain live; the visible demo still feels intact.
-- **L4 degraded (one L4 down)**: VSS goes cold or the agent brain is unavailable (whichever the seller can best spare for the scenario). Console surfaces the constraint and selects scenarios that don't need the lost workload.
+- **L40S degraded (one L40S down)**: L40S-4 rotating slot is unavailable first. Scenarios requiring GR00T or Cosmos Predict/Transfer concurrent with Kit streaming + Isaac Sim + Cosmos Reason fall back to replay mode for the affected beats. If Cosmos Reason's node drops, the warehouse-obstruction beat goes cold. Kit streaming + Isaac Sim remain live; the visible demo still feels intact.
+- **L4 degraded (one L4 down)**: agent brain or USD Code/Verify is unavailable. Console surfaces the constraint and selects scenarios that don't need the lost workload.
 
 In either case, the seller doesn't have to cancel — the Console routes them to a compatible scenario selection.
 
@@ -121,7 +122,7 @@ Entered explicitly via a `TrainingWindow` CR; the Showcase Console refuses live 
 
 - All L40S nodes available for Isaac Lab training workers (data-parallel across 2–3 workers).
 - Optional: Cosmos Predict / Transfer pipeline runs on one L40S concurrently with training on the others, if scheduled.
-- **L4 pool continues serving** — VSS, agent brain, USD Code/Verify stay available. This is new with the dual-class plan: training no longer starves inference. Agent-driven analyses and synthetic data generation coordination flows can continue during training windows as long as they don't need L40S themselves.
+- **L4 pool continues serving** — agent brain, USD Code/Verify stay available. Cosmos Reason lives on L40S and is affected by training windows unless a dedicated L40S slot is reserved. Agent-driven analyses and small-NIM flows can continue during training windows as long as they don't need L40S themselves.
 
 Exiting training mode: ongoing training jobs are checkpointed and either paused or terminated; demo-stack scale-from-zero brings things back in ~2 minutes.
 
@@ -151,12 +152,12 @@ Exact product-label strings must be verified during Phase 0: run `oc get nodes -
 Three PriorityClass definitions in `infrastructure/gitops/apps/priority-classes/`:
 
 - `demo-critical` (1_000_000): Kit App Streaming + Isaac Sim live. Preempts anything below in its namespace.
-- `demo-rotating` (100_000): GR00T, Cosmos-as-agent-tool, VSS, agent brain — whichever is the active rotating slot in either class. Preempts training jobs on its GPU.
+- `demo-rotating` (100_000): GR00T, Cosmos-as-agent-tool, Cosmos Reason, agent brain — whichever is the active rotating slot in either class. Preempts training jobs on its GPU.
 - `training` (1_000): Isaac Lab workers, Cosmos NIMs when serving the synthetic-data pipeline. Yields to anything above.
 
 ### Per-class scheduling discipline
 
-Mode transitions use customer-applied role labels *on top of* the GFD product labels, managing which pods occupy which specific node within a class. In Mode A, two L40S nodes carry the custom label `role=demo-pinned` (Kit streaming + Isaac Sim) and the third L40S carries `role=demo-rotating` (scenario-dependent). L4 nodes carry `role` values like `vss`, `agent-brain`, or `available`. These role labels are customer-applied (cluster-admin makes this direct) and are orthogonal to the GFD-applied product labels — workloads pin via both: `nvidia.com/gpu.product` for class, `role` for within-class assignment.
+Mode transitions use customer-applied role labels *on top of* the GFD product labels, managing which pods occupy which specific node within a class. In Mode A, three L40S nodes carry the custom label `role=demo-pinned` (Kit streaming, Isaac Sim, Cosmos Reason) and a fourth L40S (if provisioned) carries `role=demo-rotating` (GR00T / Cosmos Predict-Transfer, scenario-dependent). L4 nodes carry `role` values like `agent-brain` or `available`. These role labels are customer-applied (cluster-admin makes this direct) and are orthogonal to the GFD-applied product labels — workloads pin via both: `nvidia.com/gpu.product` for class, `role` for within-class assignment.
 
 Mode transitions update role labels via a small controller or Ansible playbook. Observable via `oc get nodes -l nvidia.com/gpu.present=true --show-labels`.
 
@@ -168,7 +169,7 @@ Kueue's ClusterQueue definitions are class-aware — an L40S ClusterQueue and an
 
 ### KServe scale-from-zero
 
-All inference services use `minReplicas: 0`. GR00T, Cosmos, VSS, USD Code/Verify, agent brain — all drop to zero when idle, freeing their GPU. Cold-start latency is 10–40 seconds; the Showcase Console's scenario transitions account for this.
+All inference services use `minReplicas: 0`. GR00T, Cosmos, Cosmos Reason, USD Code/Verify, agent brain — all drop to zero when idle, freeing their GPU. Cold-start latency is 10–40 seconds; the Showcase Console's scenario transitions account for this.
 
 Kit App Streaming runs pinned (no scale-from-zero) during demo hours — cold-start latency is unacceptable mid-meeting.
 
@@ -181,9 +182,9 @@ Each phase's GPU profile.
 - Runs in any configuration.
 
 ### Phase 1 — Mega Core
-- Steady-state: GC-1, GC-2 (L40S always-on), GC-3 (L40S rotating), GC-6 (L4 warm).
-- Fits comfortably in Mode A with one L40S and one L4 still headroom.
-- Degraded (Mode B) scenarios still operate meaningfully because inference-class workloads live on L4.
+- Steady-state: GC-1, GC-2, GC-6 (L40S always-on during Phase-1 warehouse demo).
+- Phase 1 requires **3 L40S** to run all warm-pinned workloads concurrently. GR00T / Cosmos Predict-Transfer rotating slot needs a 4th L40S to be warm alongside; otherwise it's scale-from-zero on the rotating slot when needed.
+- Degraded (Mode B) scenarios still operate meaningfully because the agent brain (Phase 3+) and smaller NIMs run on L4.
 
 ### Phase 2 — MLOps, Edge, Multi-Site
 - Adds GC-7 Isaac Lab (L40S, Mode C only).

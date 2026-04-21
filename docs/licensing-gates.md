@@ -90,9 +90,9 @@ This is a living doc — update as gates resolve (or don't).
 
 ---
 
-## 7. Unitree G1 USD models + Nova Carter USD
+## 7. Unitree G1 USD models + NVIDIA Warehouse Digital-Twin assets (Forklift_A01, pallets, scene)
 
-**License**: Published by NVIDIA as Isaac Sim samples, generally freely usable for simulation. Physical-robot use of the same models inside a paid customer product is a separate conversation customers have with Unitree / the robot vendor — out of our scope.
+**License**: Published by NVIDIA as Isaac Sim 6.0 sample assets (`Isaac/Environments/Digital_Twin_Warehouse/` and `NVIDIA/Assets/DigitalTwin/Assets/Warehouse/`), generally freely usable for simulation. Physical-robot use of the Unitree G1 model inside a paid customer product is a separate conversation customers have with Unitree — out of our scope. Nova Carter USD is parked unused per ADR-027 (forklift replaced it as the Phase-1 actor); licensing posture unchanged if the asset is ever needed again.
 
 **Status**: Usable.
 
@@ -108,7 +108,7 @@ This is a living doc — update as gates resolve (or don't).
 | Cosmos family | Usable with attribution | — |
 | Nemotron family | Usable | — |
 | Isaac / Omniverse | Usable for reference-material | — |
-| Unitree / Nova Carter USDs | Usable | — |
+| Unitree G1 + NVIDIA Warehouse digital-twin USDs (Forklift_A01, pallets, scene) | Usable | — |
 
 ## Charter + phased-plan downstream effects
 
