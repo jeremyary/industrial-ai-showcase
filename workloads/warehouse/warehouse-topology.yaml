@@ -76,8 +76,8 @@ cameras:
     # image library (ADR-027 step 6). Keys are named states; values are the
     # object names in MinIO bucket `warehouse-camera-library`.
     frame_library:
-      empty: aisle3_empty.png
-      obstructed: aisle3_pallet.png
+      empty: aisle3_empty.jpg
+      obstructed: aisle3_pallet.jpg
     resolution: [1920, 1080]
     fps: 1
 
