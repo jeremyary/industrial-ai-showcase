@@ -9,9 +9,10 @@ from common_lib.config import ServiceSettings
 class FleetManagerSettings(ServiceSettings):
     service_name: str = "fleet-manager"
 
-    events_topic: str = "fleet.events"
     missions_topic: str = "fleet.missions"
+    alerts_topic: str = "fleet.safety.alerts"
     telemetry_topic: str = "fleet.telemetry"
+    ops_events_topic: str = "fleet.ops.events"
     consumer_group_id: str = "fleet-manager"
 
     policy_version: str = Field(

@@ -44,7 +44,9 @@ class FleetEvent(BaseModel):
 
 
 class MissionKind(str, Enum):
+    DISPATCH = "dispatch"
     REROUTE = "reroute"
+    PROCEED = "proceed"
     PICKUP = "pickup"
     DROPOFF = "dropoff"
     STANDBY = "standby"
