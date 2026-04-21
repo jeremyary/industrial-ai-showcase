@@ -1,0 +1,8 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: fake-camera
+  namespace: warehouse-edge
+  labels:
+    app: fake-camera
+    phase: phase-1

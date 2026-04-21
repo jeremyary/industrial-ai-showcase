@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: warehouse-edge
+  labels:
+    # Phase-1 inhabits only fake-camera. Future residents (mission-dispatcher,
+    # waypoint-planner, twin-telemetry relay) land here alongside.
+    app.kubernetes.io/part-of: warehouse-edge
