@@ -1,0 +1,137 @@
+# This project was developed with assistance from AI tools.
+#
+# warehouse-topology.yaml — single source of truth for the Phase-1 warehouse
+# scene's named locations, robots, cameras, and scenarios. Per ADR-027, every
+# component that references an aisle / dock / approach-point / camera / robot
+# by name imports this file so coordinates don't drift between:
+#
+#   - the scene-pack overlay USD (places forklift + markers + cameras in
+#     Isaac Sim relative to the small_warehouse_digital_twin.usd frame)
+#   - wms-stub (emits mission requests with named origin/destination)
+#   - fleet-manager (plans + replans routes over named aisles)
+#   - mission-dispatcher + waypoint-planner (drives the forklift along an
+#     aisle's centerline)
+#   - isaac-sim twin-update subscriber (moves the forklift prim to reported
+#     pose, places the pallet prim on the obstructed aisle on alert)
+#   - showcase-console (renders the topology diagram; binds Dispatch Mission
+#     / Drop Pallet buttons to the right mission + camera pair)
+#
+# Coordinates are in METERS, right-handed, Z-up. World origin is the small
+# warehouse's floor-center (matches the scene-pack overlay's coordinate frame
+# — coordinates here are authored against the overlay's placement of the
+# warehouse, NOT the raw small_warehouse_digital_twin.usd which arrives in
+# its own authored frame). Update both this file AND the overlay USD together
+# if the warehouse is re-positioned.
+
+version: 1
+name: showcase-warehouse
+units: meters
+
+docks:
+  dock-a:
+    description: Forklift home / staging area (west end of aisles)
+    position: [-12.0, 0.0, 0.0]
+    orientation_deg: 0  # facing +X, east
+  dock-b:
+    description: Pallet A47 pickup destination (east end)
+    position: [15.0, 0.0, 0.0]
+    orientation_deg: 180  # facing -X, west
+
+aisles:
+  aisle-3:
+    description: Primary route (scenario-default path dock-a → dock-b)
+    centerline:
+      start: [-10.0, 0.0, 0.0]
+      end: [13.0, 0.0, 0.0]
+    width_m: 3.0
+  aisle-4:
+    description: Alternate route (replan-on-obstruction fallback)
+    centerline:
+      start: [-10.0, 4.0, 0.0]
+      end: [13.0, 4.0, 0.0]
+    width_m: 3.0
+
+approach_points:
+  aisle-3-west:
+    description: >
+      Where fl-07 pauses for coordinator clearance before entering aisle-3.
+      Presenter narrates the detection infrastructure during this pause.
+      Clicking Drop Pallet triggers the camera state change and replaces
+      the pending clearance with a reroute mission.
+    position: [-9.0, 0.0, 0.0]
+    gates_aisle: aisle-3
+  aisle-4-west:
+    description: Approach-point on the alternate aisle.
+    position: [-9.0, 4.0, 0.0]
+    gates_aisle: aisle-4
+
+cameras:
+  cam-aisle-3:
+    description: Ceiling camera over aisle-3 (primary scenario camera).
+    position: [1.5, 0.0, 6.0]
+    # Rotation: pitched 60° down from horizontal, looking west-to-east along aisle.
+    rotation_deg: [60.0, 0.0, 0.0]
+    publishes_topic: warehouse.cameras.aisle3
+    # Frames served by the companion-side fake-camera service from the MinIO
+    # image library (ADR-027 step 6). Keys are named states; values are the
+    # object names in MinIO bucket `warehouse-camera-library`.
+    frame_library:
+      empty: aisle3_empty.png
+      obstructed: aisle3_pallet.png
+    resolution: [1920, 1080]
+    fps: 1
+
+robots:
+  fl-07:
+    description: Autonomous forklift (Forklift_A01). Phase-1 primary actor.
+    # Logical asset id — resolved to a Nucleus URL by the component that
+    # loads it (scene-pack overlay, mission-dispatcher, twin-update sub).
+    # Canonical location under `<nucleus-asset-root>/Isaac/<ver>/NVIDIA/Assets/
+    # DigitalTwin/Assets/Warehouse/Equipment/Forklifts/Forklift_A/Standard_A/
+    # Forklift_A01_PR_V_NVD_01.usd`.
+    asset_ref: nvidia/Forklift_A01
+    home: dock-a
+
+pallets:
+  # Logical pallet ids used by mission requests + twin-update subscriber.
+  # Phase-1 only materializes `pallet-a47` (the obstruction that appears in
+  # aisle-3 when Drop Pallet fires).
+  pallet-a47:
+    description: Cardboard-boxes-on-pallet variant (matches the AI-generated obstructed frame).
+    asset_ref: nvidia/Cardboard_Boxes_on_Pallet/Standard_A/Default
+    # Where the twin-update subscriber places this prim when it sees the
+    # aisle-3 obstruction alert. Mid-aisle, between approach-point and dock-b.
+    obstruction_position: [1.0, 0.0, 0.0]
+
+missions:
+  retrieve-pallet-a47:
+    description: Default Phase-1 mission. Fetch pallet A47 from dock-b via aisle-3.
+    target_robot: fl-07
+    origin: dock-a
+    destination: dock-b
+    preferred_route: [aisle-3]
+    alternate_routes: [aisle-4]
+
+scenarios:
+  aisle-3-obstruction:
+    description: >
+      Presenter-triggered obstruction scenario: forklift drives to aisle-3
+      approach-point, pauses for clearance narration, Drop Pallet fires,
+      Cosmos Reason detects, Fleet Manager replans via aisle-4.
+    # Presenter buttons in the Showcase Console.
+    buttons:
+      dispatch:
+        label: Dispatch Mission
+        action: enqueue_mission
+        mission: retrieve-pallet-a47
+      drop_pallet:
+        label: Drop Pallet
+        action: switch_camera_frame
+        camera: cam-aisle-3
+        to_state: obstructed
+    expected_flow:
+      - "fake-camera emits obstructed frame on warehouse.cameras.aisle3"
+      - "obstruction-detector → Cosmos Reason 2-8B → fleet.safety.alerts"
+      - "fleet-manager replans fl-07 via aisle-4 instead of clearance"
+      - "twin-update subscriber places pallet-a47 at aisle-3 obstruction_position"
+      - "forklift reroutes via aisle-4, reaches dock-b"
