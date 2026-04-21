@@ -16,6 +16,7 @@ spec:
     - name: metrics
       port: 3010
       targetPort: 8080
+      appProtocol: tcp
 ---
 # Source: omniverse-nucleus/templates/services/monpx.yaml
 apiVersion: apps/v1

@@ -16,6 +16,7 @@ spec:
     - name: cache
       port: 8891
       targetPort: 8891
+      appProtocol: tcp
 ---
 # Source: omniverse-nucleus/templates/services/resolver-cache.yaml
 apiVersion: apps/v1
