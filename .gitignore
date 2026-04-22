@@ -31,6 +31,11 @@ videos/
 # Node / TypeScript
 node_modules/
 *.tsbuildinfo
+# tsc emit landing in source dirs (outDir misconfigured or missing)
+console/frontend/src/**/*.js
+console/frontend/src/**/*.d.ts
+console/frontend/*.js
+console/frontend/*.d.ts
 
 # IDE
 .vscode/

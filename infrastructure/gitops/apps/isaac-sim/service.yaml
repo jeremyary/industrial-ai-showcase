@@ -20,4 +20,8 @@ spec:
       port: 49100
       targetPort: tcp-webrtc
       protocol: TCP
+    - name: tcp-mjpeg
+      port: 8090
+      targetPort: tcp-mjpeg
+      protocol: TCP
   type: ClusterIP

@@ -20,9 +20,17 @@ NVIDIA Kit App Streaming (KAS) control plane. Browser-embeddable streaming of Ki
 
 Isaac Sim 5.1 moved the officially-supported browser-streaming path to KAS-mediated sessions. Direct-to-pod browser WebRTC still technically works on 5.0 but is no longer NVIDIA's blessed path, and 5.1 regresses it on some hardware (e.g., Jetson Thor per NVIDIA forums). KAS is the path NVIDIA maintains forward through 6.0. See `docs/07-decisions.md` if this gets formalized as an ADR.
 
-## Why Kit app is not a static Deployment under KAS
+## Relationship to `apps/isaac-sim` (standalone Deployment)
 
-KAS's Session Manager spawns Kit app pods **on-demand** when a browser session is requested, then tears them down. Static Deployments don't fit this model. Our Phase-1 `apps/isaac-sim/` Deployment is kept alive during KAS bring-up for verification but retired at checkpoint #8.
+KAS manages on-demand Kit sessions: browser requests a stream, KAS spins up a Kit pod, streams via WebRTC, tears it down when the viewer disconnects. This is ideal for tinkering with scenes, multi-viewer streaming, and validating the WebRTC pipeline.
+
+The standalone `apps/isaac-sim/` Deployment runs the Phase-1 demo pipeline: scene-pack from Nucleus, Kafka twin-update subscribers (forklift pose + pallet obstruction), MJPEG viewport stream. It needs full pod-spec control (Vault-backed env vars, pip install at startup, extra ports) that the KAS ApplicationProfile doesn't easily expose.
+
+Both deployments use the same scenario scripts from `workloads/isaac-sim/scenarios/`. When `SCENE_PACK_URL` is set (standalone), the script loads the scene-pack and activates Kafka consumers. When unset (KAS), it falls back to the CDN warehouse with no twin updates.
+
+**Current role split:**
+- **KAS** — scene tinkering, WebRTC troubleshooting, multi-viewer demos, ad-hoc exploration
+- **Standalone** — always-on demo pipeline with live Kafka-driven digital twin
 
 ## Sources
 

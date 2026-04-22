@@ -42,6 +42,8 @@ spec:
             - -c
             - |
               set -e
+              # confluent-kafka wheel includes librdkafka — no system deps needed.
+              /isaac-sim/kit/python/bin/python3 -m pip install --quiet confluent-kafka || true
               /isaac-sim/runheadless.sh \
                 --/app/livestream/webrtcEnabled=true \
                 --/app/livestream/nativeStreamerEnabled=true \
@@ -57,6 +59,21 @@ spec:
               value: "Y"
             - name: OMNI_SERVER
               value: "omniverse://nucleus-api.omniverse-nucleus.svc.cluster.local"
+            - name: SCENE_PACK_URL
+              value: "omniverse://nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com/Projects/showcase/scene-packs/warehouse_scene_pack.usda"
+            - name: NUCLEUS_USER
+              value: omniverse
+            - name: NUCLEUS_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: nucleus-passwords
+                  key: master-password
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: fleet-kafka-bootstrap.fleet-ops.svc:9092
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: PLAINTEXT
+            - name: PALLET_ASSET_URL
+              value: "omniverse://nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com/Projects/showcase/assets/Isaac/6.0/NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Cardboard_Boxes_on_Pallet/Standard_A/CbrdBoxesOnPlt_A01_106x106x80cm_PR_NVD_01.usd"
             - name: NVIDIA_VISIBLE_DEVICES
               value: "all"
             - name: NVIDIA_DRIVER_CAPABILITIES
@@ -71,6 +88,9 @@ spec:
               protocol: TCP
             - name: tcp-webrtc
               containerPort: 49100
+              protocol: TCP
+            - name: tcp-mjpeg
+              containerPort: 8090
               protocol: TCP
           resources:
             requests:
