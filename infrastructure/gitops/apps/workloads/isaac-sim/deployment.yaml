@@ -106,17 +106,14 @@ spec:
               mountPath: /scenarios
               readOnly: true
             - name: cache
-              mountPath: /root/.cache/ov
+              mountPath: /isaac-sim/.cache/ov
               subPath: cache
             - name: cache
-              mountPath: /root/.local/share/ov/data
-              subPath: data
+              mountPath: /isaac-sim/.nv/ComputeCache
+              subPath: compute-cache
             - name: cache
               mountPath: /root/.nvidia-omniverse
               subPath: nvidia-omniverse
-            - name: cache
-              mountPath: /root/Documents
-              subPath: documents
             - name: logs
               mountPath: /root/.nvidia-omniverse/logs
             - name: logs

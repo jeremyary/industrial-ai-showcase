@@ -236,8 +236,15 @@ def _apply_updates(_event) -> None:
 
 async def _run() -> None:
     try:
+        print("[warehouse_baseline] _run() starting", flush=True)
         _register_nucleus_auth()
         await _open_scene()
+        print("[warehouse_baseline] scene opened successfully", flush=True)
+
+        stage = omni.usd.get_context().get_stage()
+        if stage:
+            top_prims = [str(p.GetPath()) for p in stage.GetPseudoRoot().GetChildren()]
+            print(f"[warehouse_baseline] top-level prims: {top_prims}", flush=True)
 
         threading.Thread(target=_telemetry_consumer, daemon=True, name="twin-telemetry").start()
         threading.Thread(target=_alerts_consumer, daemon=True, name="twin-alerts").start()
@@ -250,11 +257,13 @@ async def _run() -> None:
         )
 
         omni.timeline.get_timeline_interface().play()
-        carb.log_info("warehouse_baseline: scene ready, twin subscribers active")
+        print("[warehouse_baseline] timeline playing, twin subscribers active", flush=True)
     except Exception:
+        print(f"[warehouse_baseline] _run() FAILED: {traceback.format_exc()}", flush=True)
         carb.log_error("warehouse_baseline: " + traceback.format_exc())
 
 
+print("[warehouse_baseline] module loaded, scheduling _run()", flush=True)
 omni.kit.app.get_app().get_post_update_event_stream()
 asyncio.ensure_future(_run())
 
@@ -274,11 +283,12 @@ import viewport_mjpeg  # noqa: E402,F401
 
 def _install_camera_orbit() -> None:
     if os.environ.get("SCENE_CAMERA_ORBIT", "1") == "0":
+        print("[camera_orbit] disabled via env", flush=True)
         return
     try:
         from pxr import Gf, UsdGeom
     except Exception:
-        carb.log_warn("camera_orbit: pxr imports unavailable")
+        print("[camera_orbit] pxr imports unavailable", flush=True)
         return
 
     camera_path = "/OmniverseKit_Persp"
@@ -287,6 +297,7 @@ def _install_camera_orbit() -> None:
     orbit_height = 6.0
     orbit_center_y = 2.0
     t0 = time.time()
+    _log_count = [0]
 
     def _tick(_event) -> None:
         try:
@@ -295,6 +306,9 @@ def _install_camera_orbit() -> None:
                 return
             cam = stage.GetPrimAtPath(camera_path)
             if not cam or not cam.IsValid():
+                _log_count[0] += 1
+                if _log_count[0] <= 3:
+                    print(f"[camera_orbit] camera prim {camera_path} not found", flush=True)
                 return
             t = time.time() - t0
             angle = (t / orbit_period_s) * 2.0 * math.pi
@@ -304,8 +318,13 @@ def _install_camera_orbit() -> None:
             xf = UsdGeom.XformCommonAPI(cam)
             xf.SetTranslate(Gf.Vec3d(x, y, orbit_height))
             xf.SetRotate(Gf.Vec3f(75.0, 0.0, yaw_deg))
-        except Exception:
-            pass
+            _log_count[0] += 1
+            if _log_count[0] <= 3 or _log_count[0] % 500 == 0:
+                print(f"[camera_orbit] tick #{_log_count[0]} pos=({x:.1f},{y:.1f},{orbit_height}) angle={math.degrees(angle):.0f}°", flush=True)
+        except Exception as e:
+            _log_count[0] += 1
+            if _log_count[0] <= 5:
+                print(f"[camera_orbit] tick error: {e}", flush=True)
 
     global _ORBIT_SUB
     _ORBIT_SUB = (
@@ -313,7 +332,7 @@ def _install_camera_orbit() -> None:
         .get_update_event_stream()
         .create_subscription_to_pop(_tick, name="camera_orbit")
     )
-    carb.log_info(f"camera_orbit: subscribed (radius={orbit_radius}, period={orbit_period_s}s)")
+    print(f"[camera_orbit] subscribed (radius={orbit_radius}, period={orbit_period_s}s, camera={camera_path})", flush=True)
 
 
 _install_camera_orbit()
