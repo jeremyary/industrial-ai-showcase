@@ -73,6 +73,12 @@ spec:
               mountPath: /scripts
             - name: staging
               mountPath: /staging
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
       imagePullSecrets:
         - name: ngc-pull-secret
       volumes:
