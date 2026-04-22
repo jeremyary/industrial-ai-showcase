@@ -2,7 +2,7 @@ apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding
 metadata:
   name: companion-git-source-secret
-  namespace: companion
+  namespace: open-cluster-management-global-set
 placementRef:
   apiGroup: cluster.open-cluster-management.io
   kind: Placement

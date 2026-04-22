@@ -2,7 +2,7 @@ apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
   name: companion-git-source-secret
-  namespace: companion
+  namespace: open-cluster-management-global-set
   annotations:
     policy.open-cluster-management.io/categories: CM Configuration Management
     policy.open-cluster-management.io/standards: NIST SP 800-53
@@ -18,9 +18,6 @@ spec:
         spec:
           remediationAction: enforce
           severity: low
-          namespaceSelector:
-            include:
-              - warehouse-edge
           object-templates:
             - complianceType: musthave
               objectDefinition:
