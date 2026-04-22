@@ -38,22 +38,39 @@ fastify.get("/api/topology", async () => ({
   teasers: ["Retrain & promote", "Multi-site rollout", "Agentic operator"],
 }));
 
-fastify.post<{ Params: { name: string } }>(
-  "/api/scenarios/:name/run",
+fastify.get("/api/scenarios", async () => {
+  const resp = await fetch(`${config.wmsStubBaseUrl}/scenarios`);
+  return resp.json();
+});
+
+fastify.get<{ Params: { name: string } }>(
+  "/api/scenarios/:name",
   async (request, reply) => {
     const { name } = request.params;
-    const resp = await fetch(`${config.wmsStubBaseUrl}/scenarios/${name}/run`, {
-      method: "POST",
-    });
+    const resp = await fetch(
+      `${config.wmsStubBaseUrl}/scenarios/${encodeURIComponent(name)}`,
+    );
     const body = await resp.text();
     reply.code(resp.status).type("application/json").send(body);
   },
 );
 
-fastify.get("/api/scenarios", async () => {
-  const resp = await fetch(`${config.wmsStubBaseUrl}/scenarios`);
-  return resp.json();
-});
+fastify.post<{ Params: { action: string }; Body: Record<string, unknown> }>(
+  "/api/action/:action",
+  async (request, reply) => {
+    const { action } = request.params;
+    const resp = await fetch(
+      `${config.wmsStubBaseUrl}/${encodeURIComponent(action)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request.body ?? {}),
+      },
+    );
+    const body = await resp.text();
+    reply.code(resp.status).type("application/json").send(body);
+  },
+);
 
 registerStreamRoutes(fastify, config);
 

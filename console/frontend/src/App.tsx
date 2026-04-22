@@ -1,5 +1,5 @@
 // This project was developed with assistance from AI tools.
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Badge,
   Button,
@@ -16,18 +16,14 @@ import {
   MastheadMain,
   Page,
   PageSection,
-  Select,
-  SelectOption,
-  MenuToggle,
-  type MenuToggleElement,
   Spinner,
   Stack,
   StackItem,
   ToggleGroup,
   ToggleGroupItem,
 } from "@patternfly/react-core";
-import type { AudienceMode, FleetMessage, Topology } from "./types.js";
-import { fetchScenarios, fetchTopology, runScenario, subscribeEvents } from "./api.js";
+import type { AudienceMode, ButtonDef, FleetMessage, ScenarioDetail, Topology } from "./types.js";
+import { executeAction, fetchScenarioDetail, fetchScenarios, fetchTopology, subscribeEvents } from "./api.js";
 import { StageCard } from "./Stage.js";
 
 const MAX_EVENTS = 200;
@@ -35,19 +31,21 @@ const MAX_EVENTS = 200;
 export function App(){
   const [audience, setAudience] = useState<AudienceMode>("novice");
   const [topology, setTopology] = useState<Topology | null>(null);
-  const [scenarios, setScenarios] = useState<string[]>([]);
-  const [scenarioSelection, setScenarioSelection] = useState<string | null>(null);
-  const [scenarioOpen, setScenarioOpen] = useState(false);
-  const [lastTraceId, setLastTraceId] = useState<string | null>(null);
+  const [scenario, setScenario] = useState<ScenarioDetail | null>(null);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<string | null>(null);
   const [events, setEvents] = useState<FleetMessage[]>([]);
   const [connected, setConnected] = useState(false);
+  const [cameraState, setCameraState] = useState<string | null>(null);
+  const [alertActive, setAlertActive] = useState(false);
 
   useEffect(() => {
     fetchTopology().then(setTopology).catch(() => undefined);
     fetchScenarios()
       .then((r) => {
-        setScenarios(r.scenarios);
-        setScenarioSelection(r.scenarios[0] ?? null);
+        if (r.scenarios[0]) {
+          fetchScenarioDetail(r.scenarios[0]).then(setScenario).catch(() => undefined);
+        }
       })
       .catch(() => undefined);
   }, []);
@@ -56,19 +54,45 @@ export function App(){
     const unsubscribe = subscribeEvents((msg) => {
       setConnected(true);
       setEvents((prev) => [msg, ...prev].slice(0, MAX_EVENTS));
+
+      if (msg.topic === "fleet.safety.alerts" && msg.payload && typeof msg.payload === "object") {
+        setAlertActive(true);
+      }
+
+      if (
+        msg.topic?.startsWith("warehouse.cameras.") &&
+        msg.payload &&
+        typeof msg.payload === "object" &&
+        "state" in msg.payload
+      ) {
+        setCameraState(String((msg.payload as Record<string, unknown>).state));
+      }
     });
     return unsubscribe;
   }, []);
 
-  const onRun = async () => {
-    if (!scenarioSelection) return;
+  const onAction = useCallback(async (btn: ButtonDef) => {
+    setActionBusy(btn.action);
+    setLastResult(null);
     try {
-      const result = await runScenario(scenarioSelection);
-      setLastTraceId(result.trace_id);
-    } catch {
-      setLastTraceId("run failed");
+      const result = await executeAction(btn.action, btn.params);
+      const summary = result.trace_id
+        ? `${btn.label}: ${result.status} (${String(result.trace_id).slice(0, 8)})`
+        : `${btn.label}: ${result.status ?? "ok"}`;
+      setLastResult(summary);
+
+      if (btn.action === "drop-pallet") {
+        setCameraState("obstructed");
+      } else if (btn.action === "clear-pallet") {
+        setCameraState("empty");
+        setAlertActive(false);
+      }
+    } catch (e) {
+      setLastResult(`${btn.label}: ${e instanceof Error ? e.message : "failed"}`);
+    } finally {
+      setActionBusy(null);
     }
-  };
+  }, []);
 
   return (
     <Page
@@ -106,54 +130,14 @@ export function App(){
                 <TopologyCard topology={topology} connected={connected} />
               </StackItem>
               <StackItem>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Drive the demo</CardTitle>
-                  </CardHeader>
-                  <CardBody style={{ overflow: "visible" }}>
-                    <Stack hasGutter>
-                      <StackItem>
-                        <Select
-                          id="scenario-select"
-                          isOpen={scenarioOpen}
-                          selected={scenarioSelection}
-                          onSelect={(_e, v) => {
-                            setScenarioSelection(String(v));
-                            setScenarioOpen(false);
-                          }}
-                          toggle={(ref: React.Ref<MenuToggleElement>) => (
-                            <MenuToggle
-                              ref={ref}
-                              onClick={() => setScenarioOpen((o) => !o)}
-                              isExpanded={scenarioOpen}
-                              isFullWidth
-                            >
-                              {scenarioSelection ?? "choose a scenario"}
-                            </MenuToggle>
-                          )}
-                        >
-                          {scenarios.map((s) => (
-                            <SelectOption key={s} value={s}>
-                              {s}
-                            </SelectOption>
-                          ))}
-                        </Select>
-                      </StackItem>
-                      <StackItem>
-                        <Button variant="primary" onClick={onRun} isDisabled={!scenarioSelection} isBlock>
-                          Fire scenario
-                        </Button>
-                      </StackItem>
-                      {lastTraceId ? (
-                        <StackItem>
-                          <Label color="blue" style={{ maxWidth: "100%" }}>
-                            trace_id: {lastTraceId}
-                          </Label>
-                        </StackItem>
-                      ) : null}
-                    </Stack>
-                  </CardBody>
-                </Card>
+                <ScenarioPanel
+                  scenario={scenario}
+                  actionBusy={actionBusy}
+                  lastResult={lastResult}
+                  cameraState={cameraState}
+                  alertActive={alertActive}
+                  onAction={onAction}
+                />
               </StackItem>
               <StackItem isFilled style={{ minHeight: 0, overflow: "hidden" }}>
                 <EventsCard events={events} />
@@ -181,6 +165,86 @@ export function App(){
   );
 }
 
+function ScenarioPanel({
+  scenario,
+  actionBusy,
+  lastResult,
+  cameraState,
+  alertActive,
+  onAction,
+}: {
+  scenario: ScenarioDetail | null;
+  actionBusy: string | null;
+  lastResult: string | null;
+  cameraState: string | null;
+  alertActive: boolean;
+  onAction: (btn: ButtonDef) => void;
+}){
+  if (!scenario) {
+    return (
+      <Card>
+        <CardHeader><CardTitle>Drive the demo</CardTitle></CardHeader>
+        <CardBody><Spinner size="md" /></CardBody>
+      </Card>
+    );
+  }
+
+  const buttonVariant = (action: string): "primary" | "danger" | "secondary" => {
+    if (action === "dispatch") return "primary";
+    if (action === "drop-pallet") return "danger";
+    return "secondary";
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Drive the demo</CardTitle></CardHeader>
+      <CardBody>
+        <Stack hasGutter>
+          <StackItem>
+            <span style={{ fontSize: 13, color: "#6a6a6a" }}>{scenario.description}</span>
+          </StackItem>
+          <StackItem>
+            <Flex spaceItems={{ default: "spaceItemsSm" }} direction={{ default: "column" }}>
+              {scenario.buttons.map((btn) => (
+                <FlexItem key={btn.action}>
+                  <Button
+                    variant={buttonVariant(btn.action)}
+                    isBlock
+                    isLoading={actionBusy === btn.action}
+                    isDisabled={actionBusy !== null}
+                    onClick={() => onAction(btn)}
+                  >
+                    {btn.label}
+                  </Button>
+                </FlexItem>
+              ))}
+            </Flex>
+          </StackItem>
+          <StackItem>
+            <Flex spaceItems={{ default: "spaceItemsSm" }}>
+              <FlexItem>
+                <Label color={cameraState === "obstructed" ? "orange" : "green"} isCompact>
+                  camera: {cameraState ?? "unknown"}
+                </Label>
+              </FlexItem>
+              {alertActive ? (
+                <FlexItem>
+                  <Label color="red" isCompact>obstruction detected</Label>
+                </FlexItem>
+              ) : null}
+            </Flex>
+          </StackItem>
+          {lastResult ? (
+            <StackItem>
+              <Label color="blue" style={{ maxWidth: "100%" }}>{lastResult}</Label>
+            </StackItem>
+          ) : null}
+        </Stack>
+      </CardBody>
+    </Card>
+  );
+}
+
 function TopologyCard({ topology, connected }: { topology: Topology | null; connected: boolean }){
   return (
     <Card>
@@ -200,7 +264,7 @@ function TopologyCard({ topology, connected }: { topology: Topology | null; conn
             </StackItem>
             <StackItem>
               <Label color={connected ? "green" : "grey"}>
-                events stream: {connected ? "live" : "waiting…"}
+                events stream: {connected ? "live" : "waiting..."}
               </Label>
             </StackItem>
           </Stack>
@@ -232,7 +296,7 @@ function EventsCard({ events }: { events: FleetMessage[] }){
       </CardHeader>
       <CardBody style={{ height: "100%", overflowY: "auto" }}>
         {events.length === 0 ? (
-          <em>no events yet — fire a scenario</em>
+          <em>no events yet</em>
         ) : (
           <Stack hasGutter>
             {grouped.map(({ traceId, messages }) => (
@@ -289,19 +353,13 @@ function EventLine({ message }: { message: FleetMessage }){
   );
 }
 
-function topicColor(topic: string): "blue" | "green" | "orange" | "purple" | "grey" {
-  switch (topic) {
-    case "fleet.events":
-      return "blue";
-    case "fleet.missions":
-      return "green";
-    case "fleet.ops.events":
-      return "orange";
-    case "fleet.telemetry":
-      return "purple";
-    default:
-      return "grey";
-  }
+function topicColor(topic: string): "blue" | "green" | "orange" | "purple" | "red" | "grey" {
+  if (topic === "fleet.events") return "blue";
+  if (topic === "fleet.missions") return "green";
+  if (topic === "fleet.ops.events") return "orange";
+  if (topic === "fleet.telemetry") return "purple";
+  if (topic === "fleet.safety.alerts") return "red";
+  return "grey";
 }
 
 function extractKind(m: FleetMessage): string {
@@ -309,6 +367,7 @@ function extractKind(m: FleetMessage): string {
     const p = m.payload as Record<string, unknown>;
     if (typeof p["kind"] === "string") return p["kind"] as string;
     if (typeof p["event_class"] === "string") return p["event_class"] as string;
+    if (typeof p["alert_type"] === "string") return p["alert_type"] as string;
     if (typeof p["robot_id"] === "string") return `telemetry ${p["robot_id"] as string}`;
   }
   return "(payload)";
