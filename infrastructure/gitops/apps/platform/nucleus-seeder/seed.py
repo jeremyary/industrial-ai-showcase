@@ -45,8 +45,10 @@ ISAAC_PREFIX = f"Assets/Isaac/{ISAAC_VERSION}"
 # Roots we explicitly seed. Relative to ISAAC_PREFIX.
 SEED_ROOTS = [
     "Isaac/Environments/Digital_Twin_Warehouse",
-    # Props referenced via ../../Props/ relative paths from warehouse sub-USDs
-    "Isaac/Environments/Props",
+    # Office MDL materials (../Office/Materials/ relative from warehouse USDs)
+    "Isaac/Environments/Office/Materials",
+    # Props referenced via ../../Props/ from warehouse scene (resolves to Isaac/Props/)
+    "Isaac/Props",
     "NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Equipment/Forklifts/Forklift_A",
     "NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Pallets",
     "NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Cardboard_Boxes_on_Pallet",
