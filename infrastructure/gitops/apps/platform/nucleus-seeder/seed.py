@@ -60,6 +60,12 @@ SEED_ROOTS = [
     "NVIDIA/Materials/Base",
     # ArchVis props referenced by warehouse fixtures (outlets, etc.)
     "NVIDIA/Assets/ArchVis/Residential/Decor/PowerOutlets",
+    # DigitalTwin-specific MDL materials (Base/Metals, Base/Plastics, Base/Wood, Datacenter)
+    # referenced via ../../../NVIDIA/Assets/DigitalTwin/Materials/ from warehouse prop USDs
+    "NVIDIA/Assets/DigitalTwin/Materials",
+    # Simple_Warehouse materials (MI_CeilingA_06b, MI_LampCeilingA, etc.)
+    # referenced via ../Simple_Warehouse/Materials/ from Digital_Twin_Warehouse USDs
+    "Isaac/Environments/Simple_Warehouse/Materials",
 ]
 
 LOCAL_STAGING = pathlib.Path(os.environ.get("LOCAL_STAGING", "/staging"))

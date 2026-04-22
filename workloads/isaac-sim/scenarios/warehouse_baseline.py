@@ -31,6 +31,7 @@ import traceback
 
 import carb
 import omni.kit.app
+import omni.timeline
 import omni.usd
 
 SCENE_PACK_URL = os.environ.get("SCENE_PACK_URL", "")
@@ -248,7 +249,6 @@ async def _run() -> None:
             .create_subscription_to_pop(_apply_updates, name="twin-update")
         )
 
-        import omni.timeline
         omni.timeline.get_timeline_interface().play()
         carb.log_info("warehouse_baseline: scene ready, twin subscribers active")
     except Exception:
