@@ -201,9 +201,6 @@ function ScenarioPanel({
       <CardBody>
         <Stack hasGutter>
           <StackItem>
-            <span style={{ fontSize: 13, color: "#6a6a6a" }}>{scenario.description}</span>
-          </StackItem>
-          <StackItem>
             <Flex spaceItems={{ default: "spaceItemsSm" }} direction={{ default: "column" }}>
               {scenario.buttons.map((btn) => (
                 <FlexItem key={btn.action}>

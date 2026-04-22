@@ -24,6 +24,5 @@ export interface ButtonDef {
 
 export interface ScenarioDetail {
   name: string;
-  description: string;
   buttons: ButtonDef[];
 }

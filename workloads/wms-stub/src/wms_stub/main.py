@@ -89,7 +89,6 @@ async def get_scenario_detail(name: str) -> dict:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
         "name": s.name,
-        "description": s.description,
         "buttons": [{"label": b.label, "action": b.action, "params": b.params} for b in s.buttons],
     }
 

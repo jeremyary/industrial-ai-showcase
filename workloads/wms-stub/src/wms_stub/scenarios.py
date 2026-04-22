@@ -16,17 +16,11 @@ class ButtonDef:
 @dataclass(frozen=True)
 class Scenario:
     name: str
-    description: str
     buttons: tuple[ButtonDef, ...]
 
 
 AISLE_3_OBSTRUCTION = Scenario(
     name="aisle-3-obstruction",
-    description=(
-        "Presenter-triggered obstruction scenario: forklift drives to aisle-3 "
-        "approach-point, pauses for clearance narration, Drop Pallet fires, "
-        "Cosmos Reason detects, Fleet Manager replans via aisle-4."
-    ),
     buttons=(
         ButtonDef(
             label="Dispatch Mission",
