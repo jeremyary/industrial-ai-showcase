@@ -34,5 +34,5 @@ spec:
                   namespace: warehouse-edge
                 type: kubernetes.io/basic-auth
                 data:
-                  username: '{{hub fromSecret "openshift-gitops" "repo-industrial-ai-showcase" "username" hub}}'
-                  password: '{{hub fromSecret "openshift-gitops" "repo-industrial-ai-showcase" "password" hub}}'
+                  username: '{{hub fromSecret "open-cluster-management-global-set" "git-repo-creds" "username" hub}}'
+                  password: '{{hub fromSecret "open-cluster-management-global-set" "git-repo-creds" "password" hub}}'
