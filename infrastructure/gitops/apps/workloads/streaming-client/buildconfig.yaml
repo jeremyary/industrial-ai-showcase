@@ -8,8 +8,12 @@ metadata:
     app.kubernetes.io/part-of: kit-appstreaming
 spec:
   source:
-    type: Binary
-    binary: {}
+    type: Git
+    git:
+      uri: https://github.com/jeremyary/industrial-ai-showcase.git
+      ref: main
+    sourceSecret:
+      name: git-source-secret
   strategy:
     type: Docker
     dockerStrategy:
@@ -25,4 +29,5 @@ spec:
     limits:
       cpu: 2
       memory: 4Gi
-  triggers: []
+  triggers:
+    - type: ConfigChange

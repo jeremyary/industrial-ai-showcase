@@ -8,8 +8,12 @@ metadata:
     phase: phase-1
 spec:
   source:
-    type: Binary
-    binary: {}
+    type: Git
+    git:
+      uri: https://github.com/jeremyary/industrial-ai-showcase.git
+      ref: main
+    sourceSecret:
+      name: git-source-secret
   strategy:
     type: Docker
     dockerStrategy:
@@ -18,4 +22,5 @@ spec:
     to:
       kind: ImageStreamTag
       name: fake-camera:latest
-  triggers: []
+  triggers:
+    - type: ConfigChange

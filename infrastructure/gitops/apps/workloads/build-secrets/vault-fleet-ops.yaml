@@ -1,0 +1,44 @@
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: vault
+  namespace: fleet-ops
+spec:
+  address: http://vault.vault.svc.cluster.local:8200
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: vault
+  namespace: fleet-ops
+spec:
+  vaultConnectionRef: vault
+  method: kubernetes
+  mount: kubernetes
+  kubernetes:
+    role: vso-read
+    serviceAccount: default
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: git-source-secret
+  namespace: fleet-ops
+spec:
+  vaultAuthRef: vault
+  type: kv-v2
+  mount: kv
+  path: argocd/repo-creds
+  destination:
+    name: git-source-secret
+    create: true
+    overwrite: true
+    type: kubernetes.io/basic-auth
+    transformation:
+      excludeRaw: true
+      templates:
+        username:
+          text: git
+        password:
+          text: '{{ get .Secrets "token" }}'
+  refreshAfter: 1h
