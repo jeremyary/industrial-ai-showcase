@@ -1,0 +1,15 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: fake-camera
+  namespace: warehouse-edge
+  labels:
+    app: fake-camera
+spec:
+  host: fake-camera-warehouse-edge.apps.companion.lab.local
+  to:
+    kind: Service
+    name: fake-camera
+    weight: 100
+  port:
+    targetPort: http

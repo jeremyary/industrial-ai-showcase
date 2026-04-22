@@ -1,66 +1,52 @@
 # This project was developed with assistance from AI tools.
-"""Scripted scenario definitions for the 5-min demo loop."""
+"""Demo scenario definitions sourced from warehouse-topology.yaml."""
 
 from dataclasses import dataclass, field
-from uuid import uuid4
-
-from common_lib.events import EventClass, FleetEvent
 
 
 @dataclass(frozen=True)
-class ScheduledEvent:
-    """An event fired at `fire_at_seconds` after scenario start."""
+class ButtonDef:
+    """A presenter-facing button rendered by the Showcase Console."""
 
-    fire_at_seconds: float
-    event_class: EventClass
-    location: str
-    confidence: float
-    affected_robot_id: str
-    extra_payload: dict[str, str | float | int | bool] = field(default_factory=dict)
-
-    def materialize(self, trace_id: str) -> FleetEvent:
-        payload: dict[str, str | float | int | bool] = dict(self.extra_payload)
-        payload["affected_robot_id"] = self.affected_robot_id
-        return FleetEvent(
-            trace_id=trace_id,
-            event_class=self.event_class,
-            source="wms-stub",
-            location=self.location,
-            confidence=self.confidence,
-            payload=payload,
-        )
+    label: str
+    action: str
+    params: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class Scenario:
     name: str
     description: str
-    events: tuple[ScheduledEvent, ...]
+    buttons: tuple[ButtonDef, ...]
 
 
-WAREHOUSE_BASELINE_AISLE3 = Scenario(
-    name="warehouse-baseline-aisle3-obstruction",
+AISLE_3_OBSTRUCTION = Scenario(
+    name="aisle-3-obstruction",
     description=(
-        "Canonical demo beat. A pallet has drifted into aisle-3 where AMR-07 is "
-        "scheduled to pass. Fleet Manager should emit a reroute mission; Mission "
-        "Dispatcher should call the host VLA and echo telemetry back to hub. The "
-        "wms-stub event fires immediately on button-press — pacing the demo is "
-        "the speaker's job, not the code's."
+        "Presenter-triggered obstruction scenario: forklift drives to aisle-3 "
+        "approach-point, pauses for clearance narration, Drop Pallet fires, "
+        "Cosmos Reason detects, Fleet Manager replans via aisle-4."
     ),
-    events=(
-        ScheduledEvent(
-            fire_at_seconds=0.0,
-            event_class=EventClass.AISLE_OBSTRUCTION,
-            location="aisle-3",
-            confidence=0.91,
-            affected_robot_id="amr-07",
-            extra_payload={"obstruction_kind": "pallet", "side": "left"},
+    buttons=(
+        ButtonDef(
+            label="Dispatch Mission",
+            action="dispatch",
+        ),
+        ButtonDef(
+            label="Drop Pallet",
+            action="drop-pallet",
+            params={"to_state": "obstructed"},
+        ),
+        ButtonDef(
+            label="Clear Pallet",
+            action="clear-pallet",
+            params={"to_state": "empty"},
         ),
     ),
 )
 
 
-_CATALOG: dict[str, Scenario] = {WAREHOUSE_BASELINE_AISLE3.name: WAREHOUSE_BASELINE_AISLE3}
+_CATALOG: dict[str, Scenario] = {AISLE_3_OBSTRUCTION.name: AISLE_3_OBSTRUCTION}
 
 
 def get_scenario(name: str) -> Scenario:
@@ -71,7 +57,3 @@ def get_scenario(name: str) -> Scenario:
 
 def list_scenarios() -> list[str]:
     return list(_CATALOG)
-
-
-def new_trace_id() -> str:
-    return uuid4().hex

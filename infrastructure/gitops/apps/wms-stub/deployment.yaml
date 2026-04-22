@@ -40,6 +40,10 @@ spec:
               value: fleet-kafka-bootstrap.fleet-ops.svc:9092
             - name: KAFKA_SECURITY_PROTOCOL
               value: PLAINTEXT
+            - name: MISSIONS_TOPIC
+              value: fleet.missions
+            - name: FAKE_CAMERA_URL
+              value: "http://fake-camera-warehouse-edge.apps.companion.lab.local"
           resources:
             requests:
               cpu: 100m
