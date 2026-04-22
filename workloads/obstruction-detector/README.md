@@ -59,4 +59,4 @@ Feeds every image under `test-images/` to the running Cosmos Reason deployment a
 
 ## Deploy
 
-GitOps manifests are at `infrastructure/gitops/apps/obstruction-detector/`.
+GitOps manifests are at `infrastructure/gitops/apps/workloads/obstruction-detector/`.

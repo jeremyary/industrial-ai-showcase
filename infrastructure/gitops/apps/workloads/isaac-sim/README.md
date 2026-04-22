@@ -6,7 +6,7 @@ Standalone Isaac Sim deployment for the Phase-1 demo pipeline. Loads the scene-p
 
 ## Why standalone (not KAS)
 
-KAS (Kit App Streaming, in `apps/kit-appstreaming/`) manages on-demand Kit sessions and is useful for tinkering, multi-viewer WebRTC, and troubleshooting the streaming pipeline. But KAS-managed pods are constrained by the ApplicationProfile — injecting custom env vars (Nucleus auth, Kafka bootstrap, pallet asset URLs) and pip-installing `confluent-kafka` at startup is awkward through that layer.
+KAS (Kit App Streaming, in `apps/workloads/kit-appstreaming/`) manages on-demand Kit sessions and is useful for tinkering, multi-viewer WebRTC, and troubleshooting the streaming pipeline. But KAS-managed pods are constrained by the ApplicationProfile — injecting custom env vars (Nucleus auth, Kafka bootstrap, pallet asset URLs) and pip-installing `confluent-kafka` at startup is awkward through that layer.
 
 The standalone Deployment gives full control over the pod spec: env vars from Vault secrets, startup commands, extra ports, volume mounts. For the Phase-1 demo pipeline — where a single always-on Kit process needs Kafka consumers, Nucleus scene-pack auth, and an MJPEG broadcaster — this is the simpler path.
 

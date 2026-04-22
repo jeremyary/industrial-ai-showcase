@@ -24,7 +24,7 @@ Isaac Sim 5.1 moved the officially-supported browser-streaming path to KAS-media
 
 KAS manages on-demand Kit sessions: browser requests a stream, KAS spins up a Kit pod, streams via WebRTC, tears it down when the viewer disconnects. This is ideal for tinkering with scenes, multi-viewer streaming, and validating the WebRTC pipeline.
 
-The standalone `apps/isaac-sim/` Deployment runs the Phase-1 demo pipeline: scene-pack from Nucleus, Kafka twin-update subscribers (forklift pose + pallet obstruction), MJPEG viewport stream. It needs full pod-spec control (Vault-backed env vars, pip install at startup, extra ports) that the KAS ApplicationProfile doesn't easily expose.
+The standalone `apps/workloads/isaac-sim/` Deployment runs the Phase-1 demo pipeline: scene-pack from Nucleus, Kafka twin-update subscribers (forklift pose + pallet obstruction), MJPEG viewport stream. It needs full pod-spec control (Vault-backed env vars, pip install at startup, extra ports) that the KAS ApplicationProfile doesn't easily expose.
 
 Both deployments use the same scenario scripts from `workloads/isaac-sim/scenarios/`. When `SCENE_PACK_URL` is set (standalone), the script loads the scene-pack and activates Kafka consumers. When unset (KAS), it falls back to the CDN warehouse with no twin updates.
 

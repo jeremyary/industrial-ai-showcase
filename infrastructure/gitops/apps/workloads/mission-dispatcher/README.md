@@ -4,7 +4,7 @@ Companion-cluster deployment. Lives in `robot-edge` namespace on companion SNO.
 
 ## Why this isn't behind an ApplicationSet yet
 
-Phase 1 applies this directly via `KUBECONFIG=~/.kube/companion.kubeconfig oc apply -k infrastructure/gitops/apps/mission-dispatcher/` during bootstrap. Phase 2 formalizes cross-cluster delivery via ACM ManifestWork (or Argo's managed-cluster delivery pattern already scaffolded in `infrastructure/gitops/apps/hub-acm/`).
+Phase 1 applies this directly via `KUBECONFIG=~/.kube/companion.kubeconfig oc apply -k infrastructure/gitops/apps/workloads/mission-dispatcher/` during bootstrap. Phase 2 formalizes cross-cluster delivery via ACM ManifestWork (or Argo's managed-cluster delivery pattern already scaffolded in `infrastructure/gitops/apps/hub-acm/`).
 
 ## Kafka bootstrap URL
 

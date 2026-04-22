@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: hub-acm
+  namespace: openshift-gitops
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/jeremyary/industrial-ai-showcase.git
+        revision: main
+        directories:
+          - path: infrastructure/gitops/apps/hub-acm/*
+  template:
+    metadata:
+      name: 'hub-acm-{{path.basename}}'
+      labels:
+        phase: phase-0
+        layer: hub-acm
+      annotations:
+        argocd.argoproj.io/compare-options: ServerSideDiff=true
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/jeremyary/industrial-ai-showcase.git
+        targetRevision: main
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: openshift-gitops
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

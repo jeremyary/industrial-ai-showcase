@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: workloads
+  namespace: openshift-gitops
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/jeremyary/industrial-ai-showcase.git
+        revision: main
+        directories:
+          - path: infrastructure/gitops/apps/workloads/*
+  template:
+    metadata:
+      name: 'workloads-{{path.basename}}'
+      labels:
+        phase: phase-1
+        layer: workloads
+      annotations:
+        argocd.argoproj.io/compare-options: ServerSideDiff=true
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/jeremyary/industrial-ai-showcase.git
+        targetRevision: main
+        path: '{{path}}'
+        kustomize:
+          commonAnnotations: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: openshift-gitops
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

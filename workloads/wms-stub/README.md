@@ -22,7 +22,7 @@ Additional scenarios added per demo beat as demos grow.
 ## Deployment
 
 - Cluster: OSD hub, namespace `fleet-ops`.
-- Chart: `chart/`, Argo-managed from `infrastructure/gitops/apps/wms-stub/`.
+- Chart: `chart/`, Argo-managed from `infrastructure/gitops/apps/workloads/wms-stub/`.
 - GPU: none.
 
 ## Local development

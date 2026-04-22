@@ -20,7 +20,7 @@ LangGraph-based agentic decisioning lives in `langgraph-orchestrator/` and arriv
 ## Deployment
 
 - Cluster: OSD hub, namespace `fleet-ops`.
-- Chart: `chart/`, Argo-managed from `infrastructure/gitops/apps/fleet-manager/`.
+- Chart: `chart/`, Argo-managed from `infrastructure/gitops/apps/workloads/fleet-manager/`.
 - GPU: none.
 - Service Mesh member; default-deny NetworkPolicy + explicit allowlists to Kafka and Postgres.
 

@@ -7,3 +7,9 @@ resources:
   - appsets/operators.yaml
   - appsets/platform.yaml
   - appsets/observability.yaml
+  - appsets/workloads.yaml
+  - appsets/hub-acm.yaml
+  - argocd-cm-patch.yaml
+  - vault-connection.yaml
+  - vault-auth.yaml
+  - vault-static-secret-argocd-repo.yaml

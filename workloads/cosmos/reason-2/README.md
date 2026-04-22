@@ -16,7 +16,7 @@ Per `docs/08-gpu-resource-planning.md`: single **L40S** (48 GB) via `nodeSelecto
 
 ## Runtime
 
-Deployed as a plain `Deployment` + `Service` in `infrastructure/gitops/apps/cosmos/` (not KServe — the OpenAI-compatible path via vLLM is what downstream clients already speak, and KServe adds no value here). Weights pulled from HuggingFace on first start; HF token mounted from Vault-backed Secret `hf-token`.
+Deployed as a plain `Deployment` + `Service` in `infrastructure/gitops/apps/workloads/cosmos/` (not KServe — the OpenAI-compatible path via vLLM is what downstream clients already speak, and KServe adds no value here). Weights pulled from HuggingFace on first start; HF token mounted from Vault-backed Secret `hf-token`.
 
 ## Why only Reason 2 in Phase 1
 
