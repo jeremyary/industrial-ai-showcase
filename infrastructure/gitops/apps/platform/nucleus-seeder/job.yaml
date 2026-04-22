@@ -67,7 +67,7 @@ spec:
               memory: 2Gi
             limits:
               cpu: 2
-              memory: 8Gi
+              memory: 16Gi
               nvidia.com/gpu: 1
           volumeMounts:
             - name: scripts
