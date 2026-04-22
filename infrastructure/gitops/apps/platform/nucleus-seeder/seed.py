@@ -45,12 +45,19 @@ ISAAC_PREFIX = f"Assets/Isaac/{ISAAC_VERSION}"
 # Roots we explicitly seed. Relative to ISAAC_PREFIX.
 SEED_ROOTS = [
     "Isaac/Environments/Digital_Twin_Warehouse",
+    # Props referenced via ../../Props/ relative paths from warehouse sub-USDs
+    "Isaac/Environments/Props",
     "NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Equipment/Forklifts/Forklift_A",
     "NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Pallets",
     "NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Cardboard_Boxes_on_Pallet",
+    "NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Cardboard_Boxes",
     "NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Wood_Crate_on_Pallet",
-    # Material USDs referenced by shipping assets — flagged by stage-2 dep walk.
+    "NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Wood_Crates",
     "NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Materials",
+    # Core NVIDIA MDL material library — relative ../../../NVIDIA/Materials/ from scene USDs
+    "NVIDIA/Materials/Base",
+    # ArchVis props referenced by warehouse fixtures (outlets, etc.)
+    "NVIDIA/Assets/ArchVis/Residential/Decor/PowerOutlets",
 ]
 
 LOCAL_STAGING = pathlib.Path(os.environ.get("LOCAL_STAGING", "/staging"))
