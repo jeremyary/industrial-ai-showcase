@@ -1,0 +1,557 @@
+apiVersion: v1
+# Scenario ConfigMap mounted into each KAS-spawned Kit pod at /scenarios.
+# Loaded via `--exec /scenarios/warehouse_baseline.py` in the ApplicationProfile
+# chartValues so every session auto-loads the warehouse scene. Script source of
+# truth is workloads/isaac-sim/scenarios/; regenerate with:
+#   oc create configmap warehouse-scenario -n omni-streaming \
+#     --from-file=warehouse_baseline.py=workloads/isaac-sim/scenarios/warehouse_baseline.py \
+#     --from-file=viewport_mjpeg.py=workloads/isaac-sim/scenarios/viewport_mjpeg.py \
+#     --dry-run=client -o yaml
+#
+# KAS sessions lack the Nucleus auth / Kafka env vars that the standalone
+# deployment provides, so the script falls back to the CDN warehouse scene
+# and the Kafka twin-update subscribers log a warning and stay idle.
+kind: ConfigMap
+metadata:
+  name: warehouse-scenario
+  namespace: omni-streaming
+data:
+  viewport_mjpeg.py: |
+    # This project was developed with assistance from AI tools.
+    """MJPEG viewport broadcaster for Isaac Sim sessions.
+
+    Runs inside Kit (via `--exec`) alongside the warehouse scenario. Captures the
+    active viewport each frame via `omni.kit.viewport.utility.capture_viewport_to_buffer`,
+    JPEG-encodes on a worker thread, and serves `multipart/x-mixed-replace` on
+    port 8090. The Showcase Console embeds this as a plain `<img>` tag so the
+    demo gets a reliable, low-fuss view of just the scene — not the whole Kit
+    application UI.
+
+    Threading model:
+      - Main Kit thread: subscribes to the app update-event stream. Every N
+        ticks it schedules a viewport capture. Must run here because
+        `capture_viewport_to_buffer` creates an `asyncio.Future` internally
+        and that requires an event loop on the current thread — Kit's main
+        thread is the only one that has one.
+      - Kit render thread (callback): pushes the raw RGBA pixel bytes onto a
+        bounded queue. No JPEG encoding here — encoding is CPU-heavy and we
+        don't want to stall Kit's render thread.
+      - Worker thread: pops raw bytes, JPEG-encodes with Pillow, publishes to
+        the frame broker.
+      - HTTP thread: serves MJPEG over multipart/x-mixed-replace from the
+        broker to any number of browser clients.
+    """
+
+    import ctypes
+    import io
+    import queue
+    import threading
+    import time
+    import traceback
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    import carb
+
+
+    _PyCapsule_GetPointer = ctypes.pythonapi.PyCapsule_GetPointer
+    _PyCapsule_GetPointer.restype = ctypes.c_void_p
+    _PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
+
+    try:
+        from PIL import Image
+    except ImportError:  # pragma: no cover — Kit's python ships PIL
+        Image = None
+
+
+    JPEG_QUALITY = 70
+    LISTEN_HOST = "0.0.0.0"
+    LISTEN_PORT = 8090
+    CAPTURE_EVERY_N_TICKS = 6
+    RAW_QUEUE_MAX = 1
+
+
+    class _FrameBroker:
+        def __init__(self) -> None:
+            self._frame: bytes | None = None
+            self._seq: int = 0
+            self._cv = threading.Condition()
+
+        def publish(self, frame: bytes) -> None:
+            with self._cv:
+                self._frame = frame
+                self._seq += 1
+                self._cv.notify_all()
+
+        def wait_newer_than(self, last_seq: int, timeout: float = 5.0):
+            with self._cv:
+                if self._seq > last_seq:
+                    return self._frame, self._seq
+                self._cv.wait(timeout=timeout)
+                if self._seq > last_seq:
+                    return self._frame, self._seq
+            return None, last_seq
+
+
+    _BROKER = _FrameBroker()
+    _RAW_QUEUE: "queue.Queue[tuple[int, int, bytes]]" = queue.Queue(maxsize=RAW_QUEUE_MAX)
+    _capture_err_count = 0
+
+
+    def _on_capture(*args) -> None:
+        try:
+            if len(args) >= 5:
+                buffer_capsule = args[0]
+                buffer_size = int(args[1])
+                width = int(args[2])
+                height = int(args[3])
+                if buffer_size <= 0 or width <= 0 or height <= 0:
+                    return
+                ptr = _PyCapsule_GetPointer(buffer_capsule, None)
+                if not ptr:
+                    return
+                pixels = bytes((ctypes.c_ubyte * buffer_size).from_address(ptr))
+            else:
+                wrapper = args[0]
+                if hasattr(wrapper, "get_buffer"):
+                    width = wrapper.get_width()
+                    height = wrapper.get_height()
+                    pixels = bytes(wrapper.get_buffer())
+                else:
+                    width, height, _fmt, buf = wrapper
+                    pixels = bytes(buf)
+        except Exception:
+            global _capture_err_count
+            _capture_err_count += 1
+            if _capture_err_count <= 3 or _capture_err_count % 200 == 0:
+                carb.log_warn(
+                    f"viewport_mjpeg: capture extract failed (#{_capture_err_count}): "
+                    + traceback.format_exc()
+                )
+            return
+        if not pixels or width <= 0 or height <= 0:
+            return
+        try:
+            _RAW_QUEUE.put_nowait((width, height, pixels))
+        except queue.Full:
+            try:
+                _RAW_QUEUE.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                _RAW_QUEUE.put_nowait((width, height, pixels))
+            except queue.Full:
+                pass
+
+
+    _tick = 0
+    _update_sub = None
+
+
+    def _schedule_capture(event) -> None:
+        global _tick
+        _tick += 1
+        if _tick % CAPTURE_EVERY_N_TICKS != 0:
+            return
+        try:
+            from omni.kit.viewport.utility import capture_viewport_to_buffer, get_active_viewport
+        except Exception:
+            return
+        try:
+            vp = get_active_viewport()
+            if vp is None:
+                return
+            capture_viewport_to_buffer(vp, _on_capture)
+        except Exception:
+            if _tick < CAPTURE_EVERY_N_TICKS * 5:
+                carb.log_warn("viewport_mjpeg: capture schedule failed: " + traceback.format_exc())
+
+
+    def _encode_jpeg(pixels: bytes, width: int, height: int) -> bytes:
+        if Image is None:
+            raise RuntimeError("Pillow not available in Kit's Python")
+        img = Image.frombuffer("RGBA", (width, height), pixels, "raw", "RGBA", 0, 1)
+        img = img.convert("RGB")
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=JPEG_QUALITY)
+        return out.getvalue()
+
+
+    def _encoder_loop() -> None:
+        while True:
+            try:
+                width, height, pixels = _RAW_QUEUE.get(timeout=30.0)
+            except queue.Empty:
+                continue
+            try:
+                jpeg = _encode_jpeg(pixels, width, height)
+                _BROKER.publish(jpeg)
+            except Exception:
+                carb.log_error("viewport_mjpeg: encode failed: " + traceback.format_exc())
+
+
+    class _MjpegHandler(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args) -> None:
+            return
+
+        def _send_cors(self) -> None:
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "*")
+
+        def do_OPTIONS(self) -> None:
+            self.send_response(204)
+            self._send_cors()
+            self.end_headers()
+
+        def do_GET(self) -> None:
+            if self.path in ("/healthz", "/health"):
+                self.send_response(200)
+                self._send_cors()
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"ok")
+                return
+            if self.path not in ("/", "/stream.mjpg", "/stream"):
+                self.send_response(404)
+                self._send_cors()
+                self.end_headers()
+                return
+            self.send_response(200)
+            self._send_cors()
+            self.send_header("Cache-Control", "no-cache, private")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.end_headers()
+            last_seq = 0
+            while True:
+                frame, last_seq = _BROKER.wait_newer_than(last_seq, timeout=10.0)
+                if frame is None:
+                    continue
+                try:
+                    self.wfile.write(b"--frame\r\n")
+                    self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                    self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode())
+                    self.wfile.write(frame)
+                    self.wfile.write(b"\r\n")
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+
+
+    def _serve_forever() -> None:
+        server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), _MjpegHandler)
+        server.daemon_threads = True
+        server.allow_reuse_address = True
+        carb.log_info(f"viewport_mjpeg: serving on http://{LISTEN_HOST}:{LISTEN_PORT}/stream.mjpg")
+        server.serve_forever()
+
+
+    def start() -> None:
+        global _update_sub
+        threading.Thread(target=_serve_forever, daemon=True, name="mjpeg-http").start()
+        threading.Thread(target=_encoder_loop, daemon=True, name="mjpeg-encoder").start()
+        try:
+            import omni.kit.app
+            _update_sub = (
+                omni.kit.app.get_app()
+                .get_update_event_stream()
+                .create_subscription_to_pop(_schedule_capture, name="viewport_mjpeg-capture")
+            )
+            carb.log_info("viewport_mjpeg: subscribed to app update stream")
+        except Exception:
+            carb.log_error("viewport_mjpeg: failed to subscribe: " + traceback.format_exc())
+        carb.log_info("viewport_mjpeg: started http + encoder threads")
+
+
+    start()
+  warehouse_baseline.py: |
+    # This project was developed with assistance from AI tools.
+    """Phase-1 warehouse scenario — Nucleus scene-pack + Kafka twin-update.
+
+    Opens the scene-pack overlay from Nucleus (warehouse + forklift + markers
+    composed via sublayer). Subscribes to fleet.telemetry and fleet.safety.alerts
+    on background threads; prim updates are queued and applied on Kit's main-thread
+    update tick.
+
+    Chains viewport_mjpeg.py for the MJPEG viewport broadcaster and installs a
+    camera-orbit tick for guaranteed viewport motion.
+
+    Env contract:
+        SCENE_PACK_URL          — omniverse:// URL of the scene-pack overlay on Nucleus
+        NUCLEUS_USER            — Nucleus auth user (default "omniverse")
+        NUCLEUS_PASS            — Nucleus auth password
+        KAFKA_BOOTSTRAP_SERVERS — Kafka bootstrap (default fleet-kafka-bootstrap.fleet-ops.svc:9092)
+        KAFKA_SECURITY_PROTOCOL — PLAINTEXT (default) or SSL
+        PALLET_ASSET_URL        — omniverse:// URL for the pallet USD asset (optional;
+                                  falls back to a red-cube marker if unset)
+        SCENE_CAMERA_ORBIT      — "1" (default) to orbit, "0" to disable
+    """
+
+    import asyncio
+    import json
+    import math
+    import os
+    import queue
+    import threading
+    import time
+    import traceback
+
+    import carb
+    import omni.kit.app
+    import omni.usd
+
+    SCENE_PACK_URL = os.environ.get("SCENE_PACK_URL", "")
+    NUCLEUS_USER = os.environ.get("NUCLEUS_USER", "omniverse")
+    NUCLEUS_PASS = os.environ.get("NUCLEUS_PASS", "")
+
+    KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "fleet-kafka-bootstrap.fleet-ops.svc:9092")
+    KAFKA_SECURITY_PROTOCOL = os.environ.get("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT")
+
+    FORKLIFT_PRIM = "/World/Robots/fl_07"
+    PALLET_PRIM = "/World/Obstructions/aisle_3_pallet"
+    PALLET_ASSET_URL = os.environ.get("PALLET_ASSET_URL", "")
+    PALLET_POS = (1.0, 0.0, 0.0)
+
+    _CMD_QUEUE: "queue.Queue[tuple]" = queue.Queue(maxsize=64)
+
+    _AUTH_SUB = None
+    _UPDATE_SUB = None
+    _ORBIT_SUB = None
+
+
+    def _register_nucleus_auth() -> None:
+        """Register auth callback before Kit attempts any Nucleus connections."""
+        import omni.client
+
+        def _cb(url: str):
+            return (NUCLEUS_USER, NUCLEUS_PASS)
+
+        global _AUTH_SUB
+        _AUTH_SUB = omni.client.register_authentication_callback(_cb)
+        carb.log_info(f"warehouse_baseline: nucleus auth registered (user={NUCLEUS_USER})")
+
+
+    CDN_WAREHOUSE_REL = "/Isaac/Samples/Replicator/Stage/full_warehouse_worker_and_anim_cameras.usd"
+
+
+    async def _open_scene() -> None:
+        ctx = omni.usd.get_context()
+
+        if SCENE_PACK_URL:
+            carb.log_info(f"warehouse_baseline: opening scene-pack {SCENE_PACK_URL}")
+            result, err = await ctx.open_stage_async(SCENE_PACK_URL)
+            if not result:
+                raise RuntimeError(f"failed to open scene-pack: {err}")
+            carb.log_info("warehouse_baseline: scene-pack opened")
+            return
+
+        from isaacsim.storage.native import get_assets_root_path_async
+        asset_root = await get_assets_root_path_async()
+        if not asset_root:
+            raise RuntimeError("no Isaac asset root resolved and SCENE_PACK_URL not set")
+        url = f"{asset_root}{CDN_WAREHOUSE_REL}"
+        carb.log_info(f"warehouse_baseline: SCENE_PACK_URL not set — falling back to CDN: {url}")
+        result, err = await ctx.open_stage_async(url)
+        if not result:
+            raise RuntimeError(f"failed to open CDN stage: {err}")
+        carb.log_info("warehouse_baseline: CDN warehouse opened (fallback)")
+
+
+    def _make_consumer_conf(group_id: str) -> dict:
+        conf = {
+            "bootstrap.servers": KAFKA_BOOTSTRAP,
+            "group.id": group_id,
+            "auto.offset.reset": "latest",
+            "enable.auto.commit": True,
+        }
+        if KAFKA_SECURITY_PROTOCOL != "PLAINTEXT":
+            conf["security.protocol"] = KAFKA_SECURITY_PROTOCOL
+            conf["ssl.endpoint.identification.algorithm"] = "none"
+            conf["enable.ssl.certificate.verification"] = False
+        return conf
+
+
+    def _telemetry_consumer() -> None:
+        """Consume fleet.telemetry → queue forklift pose updates."""
+        try:
+            from confluent_kafka import Consumer
+        except ImportError:
+            carb.log_warn("warehouse_baseline: confluent_kafka unavailable — telemetry subscriber disabled")
+            return
+
+        c = Consumer(_make_consumer_conf("isaac-sim-twin"))
+        c.subscribe(["fleet.telemetry"])
+        carb.log_info("warehouse_baseline: telemetry consumer started")
+
+        while True:
+            msg = c.poll(1.0)
+            if msg is None or msg.error():
+                continue
+            try:
+                data = json.loads(msg.value())
+                pose = data.get("pose")
+                if pose:
+                    try:
+                        _CMD_QUEUE.put_nowait(("move", FORKLIFT_PRIM, pose))
+                    except queue.Full:
+                        pass
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+
+    def _alerts_consumer() -> None:
+        """Consume fleet.safety.alerts → queue pallet show/hide."""
+        try:
+            from confluent_kafka import Consumer
+        except ImportError:
+            carb.log_warn("warehouse_baseline: confluent_kafka unavailable — alerts subscriber disabled")
+            return
+
+        c = Consumer(_make_consumer_conf("isaac-sim-twin-alerts"))
+        c.subscribe(["fleet.safety.alerts"])
+        carb.log_info("warehouse_baseline: alerts consumer started")
+
+        while True:
+            msg = c.poll(1.0)
+            if msg is None or msg.error():
+                continue
+            try:
+                data = json.loads(msg.value())
+                obstructed = data.get("obstructed", False)
+                try:
+                    _CMD_QUEUE.put_nowait(("obstruction", PALLET_PRIM, obstructed))
+                except queue.Full:
+                    pass
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+
+    def _apply_updates(_event) -> None:
+        """Drain command queue and update USD prims on Kit's main thread."""
+        try:
+            from pxr import Gf, Sdf, UsdGeom
+        except Exception:
+            return
+
+        stage = omni.usd.get_context().get_stage()
+        if stage is None:
+            return
+
+        while not _CMD_QUEUE.empty():
+            try:
+                cmd = _CMD_QUEUE.get_nowait()
+            except queue.Empty:
+                break
+
+            if cmd[0] == "move":
+                prim_path, pose = cmd[1], cmd[2]
+                prim = stage.GetPrimAtPath(prim_path)
+                if prim and prim.IsValid():
+                    UsdGeom.XformCommonAPI(prim).SetTranslate(Gf.Vec3d(
+                        float(pose.get("x", 0)),
+                        float(pose.get("y", 0)),
+                        float(pose.get("z", 0)),
+                    ))
+
+            elif cmd[0] == "obstruction":
+                prim_path, obstructed = cmd[1], cmd[2]
+                prim = stage.GetPrimAtPath(prim_path)
+
+                if obstructed:
+                    if not prim or not prim.IsValid():
+                        if PALLET_ASSET_URL:
+                            xf = UsdGeom.Xform.Define(stage, Sdf.Path(prim_path))
+                            xf.GetPrim().GetReferences().AddReference(PALLET_ASSET_URL)
+                        else:
+                            cube = UsdGeom.Cube.Define(stage, Sdf.Path(prim_path))
+                            cube.CreateSizeAttr(0.8)
+                            cube.CreateDisplayColorAttr([(0.9, 0.15, 0.1)])
+                        UsdGeom.XformCommonAPI(
+                            stage.GetPrimAtPath(prim_path)
+                        ).SetTranslate(Gf.Vec3d(*PALLET_POS))
+                        prim = stage.GetPrimAtPath(prim_path)
+                    UsdGeom.Imageable(prim).MakeVisible()
+                    carb.log_info(f"warehouse_baseline: pallet visible at {PALLET_POS}")
+
+                else:
+                    if prim and prim.IsValid():
+                        UsdGeom.Imageable(prim).MakeInvisible()
+                        carb.log_info("warehouse_baseline: pallet hidden")
+
+
+    async def _run() -> None:
+        try:
+            _register_nucleus_auth()
+            await _open_scene()
+
+            threading.Thread(target=_telemetry_consumer, daemon=True, name="twin-telemetry").start()
+            threading.Thread(target=_alerts_consumer, daemon=True, name="twin-alerts").start()
+
+            global _UPDATE_SUB
+            _UPDATE_SUB = (
+                omni.kit.app.get_app()
+                .get_update_event_stream()
+                .create_subscription_to_pop(_apply_updates, name="twin-update")
+            )
+
+            import omni.timeline
+            omni.timeline.get_timeline_interface().play()
+            carb.log_info("warehouse_baseline: scene ready, twin subscribers active")
+        except Exception:
+            carb.log_error("warehouse_baseline: " + traceback.format_exc())
+
+
+    omni.kit.app.get_app().get_post_update_event_stream()
+    asyncio.ensure_future(_run())
+
+
+    import sys as _sys
+    _sys.path.insert(0, "/scenarios")
+    import viewport_mjpeg
+
+
+    def _install_camera_orbit() -> None:
+        if os.environ.get("SCENE_CAMERA_ORBIT", "1") == "0":
+            return
+        try:
+            from pxr import Gf, UsdGeom
+        except Exception:
+            carb.log_warn("camera_orbit: pxr imports unavailable")
+            return
+
+        camera_path = "/OmniverseKit_Persp"
+        orbit_radius = 14.0
+        orbit_period_s = 30.0
+        orbit_height = 6.0
+        orbit_center_y = 2.0
+        t0 = time.time()
+
+        def _tick(_event) -> None:
+            try:
+                stage = omni.usd.get_context().get_stage()
+                if stage is None:
+                    return
+                cam = stage.GetPrimAtPath(camera_path)
+                if not cam or not cam.IsValid():
+                    return
+                t = time.time() - t0
+                angle = (t / orbit_period_s) * 2.0 * math.pi
+                x = orbit_radius * math.cos(angle)
+                y = orbit_center_y + orbit_radius * math.sin(angle)
+                yaw_deg = math.degrees(math.atan2(-(y - orbit_center_y), -x)) - 90.0
+                xf = UsdGeom.XformCommonAPI(cam)
+                xf.SetTranslate(Gf.Vec3d(x, y, orbit_height))
+                xf.SetRotate(Gf.Vec3f(75.0, 0.0, yaw_deg))
+            except Exception:
+                pass
+
+        global _ORBIT_SUB
+        _ORBIT_SUB = (
+            omni.kit.app.get_app()
+            .get_update_event_stream()
+            .create_subscription_to_pop(_tick, name="camera_orbit")
+        )
+        carb.log_info(f"camera_orbit: subscribed (radius={orbit_radius}, period={orbit_period_s}s)")
+
+
+    _install_camera_orbit()

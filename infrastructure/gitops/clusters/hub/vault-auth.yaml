@@ -1,0 +1,13 @@
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: vault
+  namespace: openshift-gitops
+spec:
+  method: kubernetes
+  mount: kubernetes
+  vaultConnectionRef: vault
+  kubernetes:
+    role: vso-read
+    serviceAccount: default
+    tokenExpirationSeconds: 600

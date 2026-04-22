@@ -36,13 +36,13 @@ def test_default_engine_emits_reroute_mission() -> None:
         source="wms-stub",
         location="aisle-3",
         confidence=0.91,
-        payload={"affected_robot_id": "amr-07"},
+        payload={"affected_robot_id": "fl-07"},
     )
     engine = default_engine(policy_version="vla-warehouse-v1.3")
     mission = engine.evaluate(event)
     assert mission is not None
     assert mission.kind == MissionKind.REROUTE
-    assert mission.robot_id == "amr-07"
+    assert mission.robot_id == "fl-07"
     assert mission.trace_id == "t1"
     assert mission.policy_version == "vla-warehouse-v1.3"
     assert mission.triggered_by_event_id == event.event_id

@@ -26,3 +26,6 @@ class MissionDispatcherSettings(ServiceSettings):
         description="Companion host VLA endpoint (macvlan IP) per ADR-026.",
     )
     vla_request_timeout_s: float = Field(default=10.0)
+
+    waypoint_hz: float = Field(default=5.0, gt=0.0)
+    waypoint_speed_mps: float = Field(default=2.0, gt=0.0)

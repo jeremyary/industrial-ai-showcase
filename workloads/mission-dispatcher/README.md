@@ -18,7 +18,7 @@ Per ADR-026: the companion's Radeon 8060S iGPU is reachable only from the Fedora
 ## Deployment
 
 - Cluster: companion SNO, namespace `robot-edge`.
-- Chart: `chart/`, Argo-managed from `infrastructure/gitops/apps/mission-dispatcher/` via ACM.
+- Chart: `chart/`, Argo-managed from `infrastructure/gitops/apps/workloads/mission-dispatcher/` via ACM.
 - GPU: none (inference is off-cluster on the host).
 - Service Mesh member; NetworkPolicy permits egress to Kafka + the host bridge IP + Postgres-read-only.
 

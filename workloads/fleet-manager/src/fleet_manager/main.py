@@ -1,5 +1,15 @@
 # This project was developed with assistance from AI tools.
-"""Fleet Manager entrypoint. Phase 1 v1: consume fleet.events, apply rules, emit fleet.missions."""
+"""Fleet Manager entrypoint.
+
+Consumes three Kafka topics concurrently:
+  - fleet.missions   (DISPATCH from wms-stub → track + await approach-point)
+  - fleet.safety.alerts (SafetyAlert from obstruction-detector → replan / clear)
+  - fleet.telemetry  (FleetTelemetry from mission-dispatcher → approach-point arrival)
+
+Emits to fleet.missions:
+  - PROCEED  when approach-point clearance is granted
+  - REROUTE  when an obstruction forces replanning
+"""
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -7,45 +17,111 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
-from common_lib.events import FleetEvent
+from common_lib.events import FleetMission, FleetTelemetry, MissionKind, SafetyAlert
 from common_lib.kafka import JsonConsumer, JsonProducer
 from common_lib.logging import configure_logging
 from fleet_manager import __version__
-from fleet_manager.decisioning import RuleEngine, default_engine
+from fleet_manager.planner import MissionPlanner
 from fleet_manager.settings import FleetManagerSettings
 
 if TYPE_CHECKING:
     from structlog.stdlib import BoundLogger
 
+APPROACH_POINT_RADIUS = 1.5
 
-async def _consume_loop(
-    consumer: JsonConsumer[FleetEvent],
+
+def _near_approach_point(pose: dict[str, float], aisle: str) -> tuple[bool, str]:
+    """Check if a robot pose is within APPROACH_POINT_RADIUS of a known approach-point.
+
+    Returns (is_near, aisle_id). Hard-coded for Phase-1 topology; Phase-2 loads
+    from warehouse-topology.yaml at startup.
+    """
+    x = pose.get("x", 0.0)
+    y = pose.get("y", 0.0)
+    ap_coords = {
+        "aisle-3": (-9.0, 0.0),
+        "aisle-4": (-9.0, 4.0),
+    }
+    for aisle_id, (ax, ay) in ap_coords.items():
+        if ((x - ax) ** 2 + (y - ay) ** 2) ** 0.5 <= APPROACH_POINT_RADIUS:
+            return True, aisle_id
+    return False, ""
+
+
+def _emit(producer: JsonProducer, topic: str, mission: FleetMission, log: "BoundLogger") -> None:
+    producer.send(topic, key=mission.robot_id, value=mission)
+    producer.flush(timeout=2.0)
+    log.info(
+        "mission.emitted",
+        mission_id=str(mission.mission_id),
+        robot_id=mission.robot_id,
+        kind=mission.kind,
+    )
+
+
+async def _consume_missions(
+    consumer: JsonConsumer[FleetMission],
+    planner: MissionPlanner,
+    log: "BoundLogger",
+) -> None:
+    """Consume DISPATCH missions from wms-stub and register them in the planner."""
+    loop = asyncio.get_running_loop()
+    while True:
+        mission = await loop.run_in_executor(None, consumer.poll, 1.0)
+        if mission is None:
+            await asyncio.sleep(0)
+            continue
+        if mission.kind == MissionKind.DISPATCH:
+            planner.dispatch(mission, log)
+        consumer.commit()
+
+
+async def _consume_alerts(
+    consumer: JsonConsumer[SafetyAlert],
     producer: JsonProducer,
-    engine: RuleEngine,
+    planner: MissionPlanner,
     missions_topic: str,
     log: "BoundLogger",
 ) -> None:
+    """Consume SafetyAlerts and trigger replan or clearance release."""
     loop = asyncio.get_running_loop()
     while True:
-        event = await loop.run_in_executor(None, consumer.poll, 1.0)
-        if event is None:
+        alert = await loop.run_in_executor(None, consumer.poll, 1.0)
+        if alert is None:
             await asyncio.sleep(0)
             continue
-        log.info("event.received", event_id=str(event.event_id), event_class=event.event_class)
-        mission = engine.evaluate(event)
-        if mission is None:
-            consumer.commit()
-            continue
-        producer.send(missions_topic, key=mission.robot_id, value=mission)
-        producer.flush(timeout=2.0)
-        consumer.commit()
         log.info(
-            "mission.emitted",
-            mission_id=str(mission.mission_id),
-            robot_id=mission.robot_id,
-            kind=mission.kind,
-            triggered_by_event_id=str(mission.triggered_by_event_id),
+            "alert.received",
+            alert_id=str(alert.alert_id),
+            aisle=alert.aisle_id,
+            obstructed=alert.obstructed,
         )
+        result = planner.handle_alert(alert, log)
+        if result is not None:
+            _emit(producer, missions_topic, result, log)
+        consumer.commit()
+
+
+async def _consume_telemetry(
+    consumer: JsonConsumer[FleetTelemetry],
+    producer: JsonProducer,
+    planner: MissionPlanner,
+    missions_topic: str,
+    log: "BoundLogger",
+) -> None:
+    """Consume telemetry and trigger approach-point clearance when a robot arrives."""
+    loop = asyncio.get_running_loop()
+    while True:
+        telem = await loop.run_in_executor(None, consumer.poll, 1.0)
+        if telem is None:
+            await asyncio.sleep(0)
+            continue
+        near, aisle_id = _near_approach_point(telem.pose, telem.robot_id)
+        if near:
+            result = planner.robot_at_approach_point(telem.robot_id, aisle_id, log)
+            if result is not None:
+                _emit(producer, missions_topic, result, log)
+        consumer.commit()
 
 
 @asynccontextmanager
@@ -55,32 +131,49 @@ async def lifespan(app: FastAPI):
     log.info("startup", version=__version__, environment=settings.environment)
 
     producer = JsonProducer(settings.kafka_bootstrap_servers, client_id=settings.service_name)
-    consumer = JsonConsumer(
+    planner = MissionPlanner()
+
+    missions_consumer = JsonConsumer(
         bootstrap_servers=settings.kafka_bootstrap_servers,
-        group_id=settings.consumer_group_id,
-        topic=settings.events_topic,
-        model=FleetEvent,
+        group_id=f"{settings.consumer_group_id}-missions",
+        topic=settings.missions_topic,
+        model=FleetMission,
     )
-    engine = default_engine(policy_version=settings.policy_version)
+    alerts_consumer = JsonConsumer(
+        bootstrap_servers=settings.kafka_bootstrap_servers,
+        group_id=f"{settings.consumer_group_id}-alerts",
+        topic=settings.alerts_topic,
+        model=SafetyAlert,
+    )
+    telemetry_consumer = JsonConsumer(
+        bootstrap_servers=settings.kafka_bootstrap_servers,
+        group_id=f"{settings.consumer_group_id}-telemetry",
+        topic=settings.telemetry_topic,
+        model=FleetTelemetry,
+    )
 
     app.state.settings = settings
     app.state.log = log
-    app.state.producer = producer
-    app.state.consumer = consumer
-    app.state.engine = engine
+    app.state.planner = planner
 
-    task = asyncio.create_task(
-        _consume_loop(consumer, producer, engine, settings.missions_topic, log)
-    )
+    tasks = [
+        asyncio.create_task(_consume_missions(missions_consumer, planner, log)),
+        asyncio.create_task(
+            _consume_alerts(alerts_consumer, producer, planner, settings.missions_topic, log)
+        ),
+        asyncio.create_task(
+            _consume_telemetry(telemetry_consumer, producer, planner, settings.missions_topic, log)
+        ),
+    ]
     try:
         yield
     finally:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        consumer.close()
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        missions_consumer.close()
+        alerts_consumer.close()
+        telemetry_consumer.close()
         producer.flush(timeout=5.0)
         log.info("shutdown")
 

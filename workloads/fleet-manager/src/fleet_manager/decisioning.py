@@ -1,9 +1,9 @@
 # This project was developed with assistance from AI tools.
 """Rule-based decisioning for Fleet Manager v1.
 
-Single rule for Phase 1 per user guidance 2026-04-19 and the 5-min demo script:
-an aisle-obstruction event triggers a reroute mission for the AMR in that aisle.
-Additional rules land when a future demo beat earns them — not speculatively.
+Phase 1 uses the MissionPlanner (planner.py) for the main obstruction-detection
+flow. This rule engine is retained for future extensibility — additional
+FleetEvent-driven rules can land here when later demo beats earn them.
 
 LangGraph-based agentic decisioning arrives in Phase 3 (ADR-005, ADR-019).
 """
@@ -24,7 +24,11 @@ class DecisionRule:
 
 
 class AisleObstructionReroute(DecisionRule):
-    """Phase 1 demo rule: aisle-obstruction event → reroute AMR on alternate path."""
+    """Legacy Phase 1 rule: aisle-obstruction FleetEvent → reroute.
+
+    Retained for backwards compatibility with any FleetEvent producers.
+    The primary obstruction path now flows through SafetyAlert → MissionPlanner.
+    """
 
     name = "aisle-obstruction-reroute"
     CONFIDENCE_THRESHOLD = 0.8
@@ -36,7 +40,7 @@ class AisleObstructionReroute(DecisionRule):
         )
 
     def decide(self, event: FleetEvent, policy_version: str) -> FleetMission:
-        robot_id = str(event.payload.get("affected_robot_id", "amr-07"))
+        robot_id = str(event.payload.get("affected_robot_id", "fl-07"))
         return FleetMission(
             trace_id=event.trace_id,
             kind=MissionKind.REROUTE,

@@ -15,3 +15,15 @@ export interface FleetMessage {
   key: string | null;
   payload: Record<string, unknown> | string | null;
 }
+
+export interface ButtonDef {
+  label: string;
+  action: string;
+  params: Record<string, string>;
+}
+
+export interface ScenarioDetail {
+  name: string;
+  description: string;
+  buttons: ButtonDef[];
+}

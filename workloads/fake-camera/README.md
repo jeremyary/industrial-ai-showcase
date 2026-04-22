@@ -45,11 +45,11 @@ The Session-18 demo story is "on-site edge captures real camera frames, hub-side
 
 ## Deploy
 
-GitOps manifests at `infrastructure/gitops/apps/fake-camera/`. Target companion kubeconfig:
+GitOps manifests at `infrastructure/gitops/apps/companion/fake-camera/`. Target companion kubeconfig:
 
 ```
 KUBECONFIG=~/.kube/companion.kubeconfig kustomize build \
-  infrastructure/gitops/apps/fake-camera/ | oc apply -f -
+  infrastructure/gitops/apps/companion/fake-camera/ | oc apply -f -
 oc start-build -n warehouse-edge fake-camera --from-dir=. \
   --kubeconfig=~/.kube/companion.kubeconfig
 ```
