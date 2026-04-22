@@ -82,4 +82,4 @@ spec:
             defaultMode: 0755
         - name: staging
           emptyDir:
-            sizeLimit: 20Gi
+            sizeLimit: 30Gi
