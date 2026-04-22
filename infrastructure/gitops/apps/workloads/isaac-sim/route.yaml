@@ -1,0 +1,17 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: isaac-sim-mjpeg
+  namespace: isaac-sim
+  labels:
+    app: isaac-sim
+spec:
+  port:
+    targetPort: tcp-mjpeg
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  to:
+    kind: Service
+    name: isaac-sim
+    weight: 100

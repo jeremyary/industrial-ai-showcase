@@ -9,4 +9,3 @@ resources:
   - services.yaml
   - route.yaml
   - networkpolicies.yaml
-  - console-kas-read.yaml
