@@ -18,6 +18,7 @@ import os
 import queue
 import subprocess
 import threading
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -43,6 +44,25 @@ _tick = 0
 _frame_count = 0
 _setup_done = False
 _frame_queue: queue.Queue = queue.Queue(maxsize=4)
+
+# ---- Diagnostics state ------------------------------------------------------
+
+_diag_capture_count = 0
+_diag_capture_drop_count = 0
+_diag_capture_last_ts = 0.0
+_diag_capture_interval_sum = 0.0
+_diag_capture_interval_count = 0
+_diag_write_count = 0
+_diag_write_bytes = 0
+_diag_write_last_ts = 0.0
+_diag_write_interval_sum = 0.0
+_diag_write_interval_count = 0
+_diag_last_report_ts = 0.0
+_diag_hls_request_count = 0
+_diag_hls_m3u8_request_count = 0
+_diag_hls_ts_request_count = 0
+_diag_hls_404_count = 0
+DIAG_REPORT_INTERVAL = 10.0
 
 
 # ---- ffmpeg management -------------------------------------------------------
@@ -105,6 +125,18 @@ def _start_ffmpeg() -> None:
         cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
     )
     print(f"[viewport_stream] ffmpeg started ({w}x{h} -> HLS/NVENC)", flush=True)
+    threading.Thread(target=_ffmpeg_stderr_reader, daemon=True, name="ffmpeg-stderr").start()
+
+
+def _ffmpeg_stderr_reader() -> None:
+    """Read ffmpeg stderr and log lines with a prefix for diagnostics."""
+    proc = _ffmpeg_proc
+    if proc is None or proc.stderr is None:
+        return
+    for line in proc.stderr:
+        text = line.decode("utf-8", errors="replace").rstrip()
+        if text:
+            print(f"[viewport_diag] ffmpeg: {text}", flush=True)
 
 
 # ---- Render product setup (deferred until scene is loaded) -------------------
@@ -156,6 +188,8 @@ def _setup_render_product() -> bool:
 def _on_update(event) -> None:
     """Grab annotator frame and enqueue for the writer thread (non-blocking)."""
     global _tick, _setup_done
+    global _diag_capture_count, _diag_capture_drop_count
+    global _diag_capture_last_ts, _diag_capture_interval_sum, _diag_capture_interval_count
 
     _tick += 1
     if _tick % CAPTURE_EVERY_N_TICKS != 0:
@@ -193,40 +227,105 @@ def _on_update(event) -> None:
     if not raw:
         return
 
+    now = time.monotonic()
+    if _diag_capture_last_ts > 0:
+        interval = now - _diag_capture_last_ts
+        _diag_capture_interval_sum += interval
+        _diag_capture_interval_count += 1
+    _diag_capture_last_ts = now
+    _diag_capture_count += 1
+
     try:
         _frame_queue.put_nowait(raw)
     except queue.Full:
-        pass
+        _diag_capture_drop_count += 1
+        if _diag_capture_drop_count % 60 == 1:
+            print(f"[viewport_diag] FRAME DROP #{_diag_capture_drop_count} — queue full (size={_frame_queue.qsize()})", flush=True)
 
 
 def _writer_loop() -> None:
     """Drain the frame queue and write to ffmpeg stdin (runs in its own thread)."""
     global _ffmpeg_proc, _frame_count
+    global _diag_write_count, _diag_write_bytes
+    global _diag_write_last_ts, _diag_write_interval_sum, _diag_write_interval_count
 
     while True:
+        q_wait_start = time.monotonic()
         raw = _frame_queue.get()
+        q_wait = time.monotonic() - q_wait_start
 
         if _ffmpeg_proc is None:
             if not os.path.isfile(FFMPEG_PATH):
+                print("[viewport_diag] writer: ffmpeg binary not found, skipping frame", flush=True)
                 continue
             _start_ffmpeg()
 
+        now = time.monotonic()
+        if _diag_write_last_ts > 0:
+            _diag_write_interval_sum += now - _diag_write_last_ts
+            _diag_write_interval_count += 1
+        _diag_write_last_ts = now
+
         try:
+            write_start = time.monotonic()
             _ffmpeg_proc.stdin.write(raw)
             _ffmpeg_proc.stdin.flush()
+            write_dur = time.monotonic() - write_start
             _frame_count += 1
+            _diag_write_count += 1
+            _diag_write_bytes += len(raw)
             if _frame_count == 1:
-                print("[viewport_stream] first frame written to ffmpeg", flush=True)
-            elif _frame_count % 1800 == 0:
-                print(f"[viewport_stream] {_frame_count} frames written", flush=True)
-        except (BrokenPipeError, OSError):
-            print("[viewport_stream] ffmpeg pipe broken, restarting", flush=True)
+                print(f"[viewport_diag] FIRST FRAME written to ffmpeg ({len(raw)} bytes, write={write_dur*1000:.1f}ms, q_wait={q_wait*1000:.1f}ms)", flush=True)
+            elif _frame_count % 300 == 0:
+                _print_diag_report()
+        except (BrokenPipeError, OSError) as e:
+            print(f"[viewport_diag] ffmpeg pipe broken ({e}), restarting", flush=True)
             with _ffmpeg_lock:
                 try:
                     _ffmpeg_proc.kill()
                 except Exception:
                     pass
                 _ffmpeg_proc = None
+
+
+def _print_diag_report() -> None:
+    """Periodic diagnostics summary."""
+    global _diag_last_report_ts
+    now = time.monotonic()
+    elapsed = now - _diag_last_report_ts if _diag_last_report_ts > 0 else 0
+    _diag_last_report_ts = now
+
+    cap_fps = (_diag_capture_interval_count / _diag_capture_interval_sum) if _diag_capture_interval_sum > 0 else 0
+    write_fps = (_diag_write_interval_count / _diag_write_interval_sum) if _diag_write_interval_sum > 0 else 0
+
+    seg_count = 0
+    seg_total_bytes = 0
+    newest_seg_age = -1.0
+    try:
+        for f in os.listdir(HLS_DIR):
+            if f.endswith(".ts"):
+                fpath = os.path.join(HLS_DIR, f)
+                seg_count += 1
+                seg_total_bytes += os.path.getsize(fpath)
+                age = now - os.path.getmtime(fpath)
+                if newest_seg_age < 0 or age < newest_seg_age:
+                    newest_seg_age = age
+    except Exception:
+        pass
+
+    ffmpeg_alive = _ffmpeg_proc is not None and _ffmpeg_proc.poll() is None
+
+    print(
+        f"[viewport_diag] REPORT | "
+        f"capture: {_diag_capture_count} frames, {cap_fps:.1f} fps, {_diag_capture_drop_count} drops | "
+        f"writer: {_diag_write_count} frames, {write_fps:.1f} fps, {_diag_write_bytes/(1024*1024):.1f} MB total | "
+        f"queue: {_frame_queue.qsize()}/{_frame_queue.maxsize} | "
+        f"ffmpeg: {'alive' if ffmpeg_alive else 'DEAD'} | "
+        f"HLS segs: {seg_count}, {seg_total_bytes/1024:.0f} KB, newest_age={newest_seg_age:.1f}s | "
+        f"HTTP: {_diag_hls_request_count} reqs ({_diag_hls_m3u8_request_count} m3u8, {_diag_hls_ts_request_count} ts, {_diag_hls_404_count} 404s) | "
+        f"elapsed={elapsed:.1f}s",
+        flush=True,
+    )
 
 
 # ---- HTTP server: serves HLS + health endpoints -----------------------------
@@ -247,6 +346,9 @@ class _HlsHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        global _diag_hls_request_count, _diag_hls_m3u8_request_count
+        global _diag_hls_ts_request_count, _diag_hls_404_count
+
         if self.path in ("/healthz", "/health"):
             self.send_response(200)
             self._send_cors()
@@ -256,6 +358,7 @@ class _HlsHandler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/hls/"):
+            _diag_hls_request_count += 1
             filename = self.path[5:].split("?")[0]
             if "/" in filename or ".." in filename:
                 self.send_response(403)
@@ -266,6 +369,9 @@ class _HlsHandler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self._send_cors()
                 self.end_headers()
+                _diag_hls_404_count += 1
+                if filename.endswith(".m3u8"):
+                    print(f"[viewport_diag] HTTP 404 for playlist: {filename}", flush=True)
                 return
             with open(filepath, "rb") as f:
                 file_data = f.read()
@@ -273,8 +379,10 @@ class _HlsHandler(BaseHTTPRequestHandler):
             self._send_cors()
             if filename.endswith(".m3u8"):
                 self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+                _diag_hls_m3u8_request_count += 1
             elif filename.endswith(".ts"):
                 self.send_header("Content-Type", "video/mp2t")
+                _diag_hls_ts_request_count += 1
             else:
                 self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Length", str(len(file_data)))
@@ -283,7 +391,7 @@ class _HlsHandler(BaseHTTPRequestHandler):
             try:
                 self.wfile.write(file_data)
             except (BrokenPipeError, ConnectionResetError):
-                pass
+                print(f"[viewport_diag] HTTP client disconnected during {filename} write", flush=True)
             return
 
         self.send_response(404)
@@ -302,6 +410,27 @@ def _serve_forever() -> None:
 # ---- Bootstrap ---------------------------------------------------------------
 
 
+def _hls_segment_watcher() -> None:
+    """Periodically log HLS segment directory state for diagnostics."""
+    seen_segs: set[str] = set()
+    while True:
+        time.sleep(5.0)
+        try:
+            files = set(os.listdir(HLS_DIR))
+        except FileNotFoundError:
+            continue
+        ts_files = {f for f in files if f.endswith(".ts")}
+        new_segs = ts_files - seen_segs
+        gone_segs = seen_segs - ts_files
+        if new_segs or gone_segs:
+            print(
+                f"[viewport_diag] HLS dir: +{len(new_segs)} new segs, -{len(gone_segs)} deleted, {len(ts_files)} total | "
+                f"new={sorted(new_segs)[:5]} gone={sorted(gone_segs)[:5]}",
+                flush=True,
+            )
+        seen_segs = ts_files
+
+
 def start() -> None:
     global _update_sub
 
@@ -310,6 +439,8 @@ def start() -> None:
     threading.Thread(target=_serve_forever, daemon=True, name="hls-http").start()
 
     threading.Thread(target=_writer_loop, daemon=True, name="ffmpeg-writer").start()
+
+    threading.Thread(target=_hls_segment_watcher, daemon=True, name="hls-seg-watch").start()
 
     try:
         import omni.kit.app

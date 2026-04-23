@@ -21,6 +21,7 @@ import json
 import os
 import queue
 import threading
+import time
 import traceback
 import uuid
 
@@ -52,6 +53,21 @@ FALLEN_POSES = [
 ]
 
 _CMD_QUEUE: "queue.Queue[tuple]" = queue.Queue(maxsize=64)
+
+# ---- Diagnostics state ------------------------------------------------------
+_diag_telemetry_recv = 0
+_diag_telemetry_enqueued = 0
+_diag_telemetry_dropped = 0
+_diag_telemetry_last_ts = 0.0
+_diag_alert_recv = 0
+_diag_alert_enqueued = 0
+_diag_update_tick = 0
+_diag_moves_applied = 0
+_diag_obstruction_cmds = 0
+_diag_resets = 0
+_diag_queue_drain_total = 0
+_diag_last_report_ts = 0.0
+_DIAG_REPORT_INTERVAL = 10.0
 
 _AUTH_SUB = None
 _UPDATE_SUB = None
@@ -136,6 +152,7 @@ def _make_consumer_conf(group_id: str) -> dict:
 
 def _telemetry_consumer() -> None:
     """Consume fleet.telemetry → queue forklift pose updates."""
+    global _diag_telemetry_recv, _diag_telemetry_enqueued, _diag_telemetry_dropped, _diag_telemetry_last_ts
     try:
         from confluent_kafka import Consumer
     except ImportError:
@@ -150,20 +167,34 @@ def _telemetry_consumer() -> None:
         msg = c.poll(1.0)
         if msg is None or msg.error():
             continue
+        _diag_telemetry_recv += 1
+        now = time.monotonic()
+        gap = now - _diag_telemetry_last_ts if _diag_telemetry_last_ts > 0 else 0
+        _diag_telemetry_last_ts = now
         try:
             data = json.loads(msg.value())
             pose = data.get("pose")
             if pose:
                 try:
                     _CMD_QUEUE.put_nowait(("move", FORKLIFT_PRIM, pose))
+                    _diag_telemetry_enqueued += 1
                 except queue.Full:
-                    pass
+                    _diag_telemetry_dropped += 1
+                    if _diag_telemetry_dropped % 20 == 1:
+                        print(f"[baseline_diag] telemetry CMD_QUEUE full, dropped #{_diag_telemetry_dropped} (qsize={_CMD_QUEUE.qsize()})", flush=True)
+                if _diag_telemetry_recv % 50 == 0:
+                    print(
+                        f"[baseline_diag] telemetry: {_diag_telemetry_recv} recv, {_diag_telemetry_enqueued} enqueued, "
+                        f"{_diag_telemetry_dropped} dropped, gap={gap*1000:.0f}ms, qsize={_CMD_QUEUE.qsize()}",
+                        flush=True,
+                    )
         except (json.JSONDecodeError, ValueError):
             pass
 
 
 def _alerts_consumer() -> None:
     """Consume fleet.safety.alerts → queue pallet show/hide."""
+    global _diag_alert_recv, _diag_alert_enqueued
     try:
         from confluent_kafka import Consumer
     except ImportError:
@@ -178,13 +209,16 @@ def _alerts_consumer() -> None:
         msg = c.poll(1.0)
         if msg is None or msg.error():
             continue
+        _diag_alert_recv += 1
         try:
             data = json.loads(msg.value())
             obstructed = data.get("obstructed", False)
+            print(f"[baseline_diag] alert received: obstructed={obstructed}, aisle={data.get('aisle_id')}, trace={data.get('trace_id','?')[:8]}", flush=True)
             try:
                 _CMD_QUEUE.put_nowait(("obstruction", obstructed))
+                _diag_alert_enqueued += 1
             except queue.Full:
-                pass
+                print(f"[baseline_diag] ALERT CMD_QUEUE FULL — dropped obstruction={obstructed}", flush=True)
         except (json.JSONDecodeError, ValueError):
             pass
 
@@ -203,6 +237,9 @@ def _shortest_yaw(a: float, b: float) -> float:
 
 def _apply_updates(_event) -> None:
     """Drain command queue, interpolate forklift, update USD prims."""
+    global _diag_update_tick, _diag_moves_applied, _diag_obstruction_cmds
+    global _diag_resets, _diag_queue_drain_total, _diag_last_report_ts
+
     try:
         from pxr import Gf, UsdGeom
     except Exception:
@@ -216,23 +253,29 @@ def _apply_updates(_event) -> None:
     global _lerp_from_pos, _lerp_from_yaw, _lerp_to_pos, _lerp_to_yaw
     global _lerp_t, _lerp_speed
 
+    _diag_update_tick += 1
+
     TELEMETRY_HZ = 5.0
     KIT_HZ_ESTIMATE = 60.0
     LERP_STEP = TELEMETRY_HZ / KIT_HZ_ESTIMATE
 
     latest_move = None
     obstruction_cmds = []
+    drained = 0
     while not _CMD_QUEUE.empty():
         try:
             cmd = _CMD_QUEUE.get_nowait()
+            drained += 1
         except queue.Empty:
             break
         if cmd[0] == "move":
             latest_move = cmd
         else:
             obstruction_cmds.append(cmd)
+    _diag_queue_drain_total += drained
 
     if latest_move is not None:
+        _diag_moves_applied += 1
         _, prim_path, pose = latest_move
         new_pos = Gf.Vec3d(
             float(pose.get("x", 0)),
@@ -286,6 +329,7 @@ def _apply_updates(_event) -> None:
         if cmd[0] != "obstruction":
             continue
         obstructed = cmd[1]
+        _diag_obstruction_cmds += 1
 
         if obstructed:
             for i, prim_path in enumerate(OBSTRUCTION_PRIMS):
@@ -300,11 +344,25 @@ def _apply_updates(_event) -> None:
                 xformable.AddRotateXYZOp().Set(Gf.Vec3f(*rot))
                 xformable.AddScaleOp().Set(Gf.Vec3f(0.01, 0.01, 0.01))
                 UsdGeom.Imageable(prim).MakeVisible()
-            carb.log_info("warehouse_baseline: pallet + boxes moved to fallen positions")
+            print(f"[baseline_diag] OBSTRUCTION applied — pallets moved to fallen positions", flush=True)
 
         else:
+            _diag_resets += 1
+            print(f"[baseline_diag] RESET triggered (reset #{_diag_resets})", flush=True)
             _reset_scene()
-            carb.log_info("warehouse_baseline: scene reset (clear-pallet)")
+
+    now = time.monotonic()
+    if _diag_update_tick % 600 == 0 or (now - _diag_last_report_ts > _DIAG_REPORT_INTERVAL and _diag_last_report_ts > 0):
+        _diag_last_report_ts = now
+        print(
+            f"[baseline_diag] REPORT | tick={_diag_update_tick} | "
+            f"qsize={_CMD_QUEUE.qsize()} drained_total={_diag_queue_drain_total} | "
+            f"moves={_diag_moves_applied} obstructions={_diag_obstruction_cmds} resets={_diag_resets} | "
+            f"telemetry: recv={_diag_telemetry_recv} enqueued={_diag_telemetry_enqueued} dropped={_diag_telemetry_dropped} | "
+            f"alerts: recv={_diag_alert_recv} enqueued={_diag_alert_enqueued} | "
+            f"lerp_t={_lerp_t:.2f} lerp_to={_lerp_to_pos}",
+            flush=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -339,25 +397,35 @@ def _reset_scene() -> None:
 
     stage = omni.usd.get_context().get_stage()
     if stage is None:
+        print("[baseline_diag] _reset_scene: stage is None — cannot reset", flush=True)
         return
 
+    restored = 0
     for prim_path, mat in _original_xforms.items():
         prim = stage.GetPrimAtPath(prim_path)
         if not prim or not prim.IsValid():
+            print(f"[baseline_diag] _reset_scene: prim missing/invalid: {prim_path}", flush=True)
             continue
         xformable = UsdGeom.Xformable(prim)
         xformable.ClearXformOpOrder()
         op = xformable.AddTransformOp()
         op.Set(mat)
         UsdGeom.Imageable(prim).MakeVisible()
+        restored += 1
 
-    print(f"[warehouse_baseline] scene reset to original xforms", flush=True)
-
+    drained = 0
     while not _CMD_QUEUE.empty():
         try:
             _CMD_QUEUE.get_nowait()
+            drained += 1
         except queue.Empty:
             break
+
+    print(
+        f"[baseline_diag] _reset_scene complete: {restored}/{len(_original_xforms)} prims restored, "
+        f"{drained} queued commands drained, lerp state cleared",
+        flush=True,
+    )
 
 
 # ---------------------------------------------------------------------------

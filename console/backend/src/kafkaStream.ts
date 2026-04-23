@@ -20,6 +20,9 @@ export interface FleetMessage {
 export class FleetStream extends EventEmitter {
   private readonly kafka: Kafka;
   private consumer: Consumer | undefined;
+  private diagMsgCount = 0;
+  private diagLastReportTs = Date.now();
+  private readonly DIAG_INTERVAL_MS = 30_000;
 
   constructor(
     bootstrapServers: string,
@@ -72,10 +75,20 @@ export class FleetStream extends EventEmitter {
       eachMessage: async (payload: EachMessagePayload) => {
         try {
           const msg = this.decode(payload);
-          this.log.info(
-            { topic: msg.topic, offset: msg.offset, listeners: this.listenerCount("message") },
-            "fleet-stream.message",
-          );
+          this.diagMsgCount++;
+          const now = Date.now();
+          if (now - this.diagLastReportTs >= this.DIAG_INTERVAL_MS) {
+            const elapsed = (now - this.diagLastReportTs) / 1000;
+            this.log.info(
+              {
+                totalMessages: this.diagMsgCount,
+                rate: (this.diagMsgCount / elapsed).toFixed(1),
+                sseListeners: this.listenerCount("message"),
+              },
+              "fleet-stream.diag",
+            );
+            this.diagLastReportTs = now;
+          }
           this.emit("message", msg);
         } catch (err) {
           this.log.error({ err: (err as Error).message, topic: payload.topic }, "fleet-stream.each-error");

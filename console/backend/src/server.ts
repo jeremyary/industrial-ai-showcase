@@ -86,10 +86,17 @@ fastify.get("/api/events", async (_request, reply) => {
   // one batch delivered on completion.
   reply.raw.socket?.setNoDelay(true);
 
+  let sseMsgCount = 0;
+  const sseConnectTs = Date.now();
+  log.info({ sseListeners: stream.listenerCount("message") + 1 }, "sse.client.connected");
+
   const onMessage = (msg: FleetMessage): void => {
+    sseMsgCount++;
     reply.raw.write(`event: message\ndata: ${JSON.stringify(msg)}\n\n`);
   };
   const onClose = (): void => {
+    const durationSec = ((Date.now() - sseConnectTs) / 1000).toFixed(0);
+    log.info({ sseMsgCount, durationSec, sseListeners: stream.listenerCount("message") - 1 }, "sse.client.disconnected");
     stream.off("message", onMessage);
   };
 
