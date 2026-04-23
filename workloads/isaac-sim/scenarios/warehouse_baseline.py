@@ -231,6 +231,53 @@ def _apply_updates(_event) -> None:
 
 
 # ---------------------------------------------------------------------------
+# One-shot frame dump (diagnostic — pull with `oc cp`)
+# ---------------------------------------------------------------------------
+
+def _schedule_frame_dump(delay_frames: int = 120) -> None:
+    """After *delay_frames* update ticks, capture the active viewport to PNG."""
+    _countdown = [delay_frames]
+    _dump_sub_holder = [None]
+
+    def _tick(_event) -> None:
+        _countdown[0] -= 1
+        if _countdown[0] > 0:
+            return
+        try:
+            import omni.kit.viewport.utility as vp_util
+            vp_api = vp_util.get_active_viewport()
+            if vp_api is None:
+                print("[frame_dump] no active viewport", flush=True)
+                return
+            print(f"[frame_dump] active viewport camera: {vp_api.camera_path}", flush=True)
+
+            from omni.kit.viewport.utility import capture_viewport_to_buffer
+            def _on_capture(buf, buf_size, width, height, fmt):
+                try:
+                    import numpy as np
+                    from PIL import Image
+                    arr = np.frombuffer(buf, dtype=np.uint8).reshape(height, width, 4)
+                    img = Image.fromarray(arr[:, :, :3])
+                    out = "/tmp/viewport_frame.png"
+                    img.save(out)
+                    print(f"[frame_dump] saved {width}x{height} frame to {out}", flush=True)
+                except Exception as e:
+                    print(f"[frame_dump] save error: {e}", flush=True)
+            capture_viewport_to_buffer(vp_api, _on_capture)
+        except Exception as e:
+            print(f"[frame_dump] error: {e}", flush=True)
+        finally:
+            _dump_sub_holder[0] = None
+
+    _dump_sub_holder[0] = (
+        omni.kit.app.get_app()
+        .get_update_event_stream()
+        .create_subscription_to_pop(_tick, name="frame_dump")
+    )
+    print(f"[frame_dump] scheduled capture in {delay_frames} frames", flush=True)
+
+
+# ---------------------------------------------------------------------------
 # Startup
 # ---------------------------------------------------------------------------
 
@@ -243,8 +290,35 @@ async def _run() -> None:
 
         stage = omni.usd.get_context().get_stage()
         if stage:
+            from pxr import UsdGeom, Gf
             top_prims = [str(p.GetPath()) for p in stage.GetPseudoRoot().GetChildren()]
             print(f"[warehouse_baseline] top-level prims: {top_prims}", flush=True)
+
+            bbox_cache = UsdGeom.BBoxCache(0.0, [UsdGeom.Tokens.default_])
+            for prim_path in top_prims:
+                prim = stage.GetPrimAtPath(prim_path)
+                if prim and prim.IsValid():
+                    try:
+                        bbox = bbox_cache.ComputeWorldBound(prim)
+                        rng = bbox.GetRange()
+                        if not rng.IsEmpty():
+                            print(f"[warehouse_baseline] bbox {prim_path}: min={rng.GetMin()} max={rng.GetMax()} center={rng.GetMidpoint()}", flush=True)
+                    except Exception:
+                        pass
+
+            cameras = [str(p.GetPath()) for p in stage.Traverse() if p.IsA(UsdGeom.Camera)]
+            print(f"[warehouse_baseline] cameras in scene: {cameras}", flush=True)
+
+            for cam_path in cameras[:5]:
+                cam_prim = stage.GetPrimAtPath(cam_path)
+                xf = UsdGeom.XformCommonAPI(cam_prim)
+                try:
+                    pos = xf.GetXformVectors(0.0)[0]
+                    print(f"[warehouse_baseline] camera {cam_path} pos={pos}", flush=True)
+                except Exception:
+                    xformable = UsdGeom.Xformable(cam_prim)
+                    world_xf = xformable.ComputeLocalToWorldTransform(0.0)
+                    print(f"[warehouse_baseline] camera {cam_path} world_xform={world_xf.ExtractTranslation()}", flush=True)
 
         threading.Thread(target=_telemetry_consumer, daemon=True, name="twin-telemetry").start()
         threading.Thread(target=_alerts_consumer, daemon=True, name="twin-alerts").start()
@@ -258,6 +332,8 @@ async def _run() -> None:
 
         omni.timeline.get_timeline_interface().play()
         print("[warehouse_baseline] timeline playing, twin subscribers active", flush=True)
+
+        _schedule_frame_dump(delay_frames=120)
     except Exception:
         print(f"[warehouse_baseline] _run() FAILED: {traceback.format_exc()}", flush=True)
         carb.log_error("warehouse_baseline: " + traceback.format_exc())
