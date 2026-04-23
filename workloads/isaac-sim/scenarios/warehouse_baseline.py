@@ -312,6 +312,17 @@ async def _run() -> None:
                     world_xf = xformable.ComputeLocalToWorldTransform(0.0)
                     print(f"[warehouse_baseline] camera {cam_path} world_xform={world_xf.ExtractTranslation()}", flush=True)
 
+            from pxr import UsdLux, Sdf
+            lights = [str(p.GetPath()) for p in stage.Traverse() if p.HasAPI(UsdLux.LightAPI)]
+            print(f"[warehouse_baseline] lights in scene: {lights}", flush=True)
+
+            if not lights:
+                print("[warehouse_baseline] NO LIGHTS FOUND — adding dome light", flush=True)
+                dome = UsdLux.DomeLight.Define(stage, Sdf.Path("/World/DomeLight"))
+                dome.CreateIntensityAttr(1000.0)
+                dome.CreateTextureFormatAttr("latlong")
+                print("[warehouse_baseline] dome light added at /World/DomeLight", flush=True)
+
         threading.Thread(target=_telemetry_consumer, daemon=True, name="twin-telemetry").start()
         threading.Thread(target=_alerts_consumer, daemon=True, name="twin-alerts").start()
 
@@ -325,7 +336,7 @@ async def _run() -> None:
         omni.timeline.get_timeline_interface().play()
         print("[warehouse_baseline] timeline playing, twin subscribers active", flush=True)
 
-        _schedule_frame_dump(delay_frames=120)
+        _schedule_frame_dump(delay_frames=600)
     except Exception:
         print(f"[warehouse_baseline] _run() FAILED: {traceback.format_exc()}", flush=True)
         carb.log_error("warehouse_baseline: " + traceback.format_exc())
