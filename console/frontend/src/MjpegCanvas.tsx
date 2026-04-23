@@ -95,8 +95,8 @@ export function MjpegCanvas({ src, style, onFirstFrame }: MjpegCanvasProps): Rea
 
     if (Hls.isSupported()) {
       const hls = new Hls({
-        liveSyncDurationCount: 1,
-        liveMaxLatencyDurationCount: 3,
+        liveSyncDurationCount: 4,
+        liveMaxLatencyDurationCount: 8,
         liveDurationInfinity: true,
         lowLatencyMode: true,
         enableWorker: true,
