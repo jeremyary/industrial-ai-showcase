@@ -408,11 +408,16 @@ def _install_camera_orbit() -> None:
             mat.SetRow(2, Gf.Vec4d(-fwd[0], -fwd[1], -fwd[2], 0))
             mat.SetRow(3, Gf.Vec4d(x, y, orbit_height, 1))
 
-            if _xform_op[0] is None:
+            try:
+                if _xform_op[0] is not None:
+                    _xform_op[0].Set(mat)
+                else:
+                    raise ValueError("init")
+            except Exception:
                 xformable = UsdGeom.Xformable(cam)
                 xformable.ClearXformOpOrder()
                 _xform_op[0] = xformable.AddTransformOp()
-            _xform_op[0].Set(mat)
+                _xform_op[0].Set(mat)
 
             _log_count[0] += 1
             if _log_count[0] <= 3 or _log_count[0] % 500 == 0:
