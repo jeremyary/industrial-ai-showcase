@@ -250,20 +250,12 @@ def _schedule_frame_dump(delay_frames: int = 120) -> None:
                 print("[frame_dump] no active viewport", flush=True)
                 return
             print(f"[frame_dump] active viewport camera: {vp_api.camera_path}", flush=True)
+            print(f"[frame_dump] viewport resolution: {vp_api.resolution}", flush=True)
 
-            from omni.kit.viewport.utility import capture_viewport_to_buffer
-            def _on_capture(buf, buf_size, width, height, fmt):
-                try:
-                    import numpy as np
-                    from PIL import Image
-                    arr = np.frombuffer(buf, dtype=np.uint8).reshape(height, width, 4)
-                    img = Image.fromarray(arr[:, :, :3])
-                    out = "/tmp/viewport_frame.png"
-                    img.save(out)
-                    print(f"[frame_dump] saved {width}x{height} frame to {out}", flush=True)
-                except Exception as e:
-                    print(f"[frame_dump] save error: {e}", flush=True)
-            capture_viewport_to_buffer(vp_api, _on_capture)
+            from omni.kit.viewport.utility import capture_viewport_to_file
+            out = "/tmp/viewport_frame.png"
+            capture_viewport_to_file(vp_api, out)
+            print(f"[frame_dump] capture_viewport_to_file called → {out}", flush=True)
         except Exception as e:
             print(f"[frame_dump] error: {e}", flush=True)
         finally:
@@ -368,10 +360,11 @@ def _install_camera_orbit() -> None:
         return
 
     camera_path = "/OmniverseKit_Persp"
-    orbit_radius = 14.0
-    orbit_period_s = 30.0
-    orbit_height = 6.0
-    orbit_center_y = 2.0
+    orbit_center_x = -116.5
+    orbit_center_y = -110.0
+    orbit_radius = 200.0
+    orbit_period_s = 60.0
+    orbit_height = 80.0
     t0 = time.time()
     _log_count = [0]
 
@@ -388,12 +381,12 @@ def _install_camera_orbit() -> None:
                 return
             t = time.time() - t0
             angle = (t / orbit_period_s) * 2.0 * math.pi
-            x = orbit_radius * math.cos(angle)
+            x = orbit_center_x + orbit_radius * math.cos(angle)
             y = orbit_center_y + orbit_radius * math.sin(angle)
-            yaw_deg = math.degrees(math.atan2(-(y - orbit_center_y), -x)) - 90.0
+            yaw_deg = math.degrees(math.atan2(-(y - orbit_center_y), -(x - orbit_center_x))) - 90.0
             xf = UsdGeom.XformCommonAPI(cam)
             xf.SetTranslate(Gf.Vec3d(x, y, orbit_height))
-            xf.SetRotate(Gf.Vec3f(75.0, 0.0, yaw_deg))
+            xf.SetRotate(Gf.Vec3f(65.0, 0.0, yaw_deg))
             _log_count[0] += 1
             if _log_count[0] <= 3 or _log_count[0] % 500 == 0:
                 print(f"[camera_orbit] tick #{_log_count[0]} pos=({x:.1f},{y:.1f},{orbit_height}) angle={math.degrees(angle):.0f}°", flush=True)
