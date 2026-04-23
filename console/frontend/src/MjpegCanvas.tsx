@@ -98,7 +98,7 @@ export function MjpegCanvas({ src, style, onFirstFrame }: MjpegCanvasProps): Rea
         liveSyncDurationCount: 4,
         liveMaxLatencyDurationCount: 8,
         liveDurationInfinity: true,
-        lowLatencyMode: true,
+        lowLatencyMode: false,
         enableWorker: true,
         backBufferLength: 0,
       });
