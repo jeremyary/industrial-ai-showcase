@@ -79,9 +79,6 @@ class MissionPlanner:
 
         active.phase = Phase.AWAITING_CLEARANCE
         log.info("clearance.requested", robot_id=robot_id, aisle=aisle_id)
-
-        if aisle_id not in self.obstructed_aisles:
-            return self._proceed(active, log)
         return None
 
     def handle_alert(
@@ -90,12 +87,14 @@ class MissionPlanner:
         """Process a SafetyAlert — replan any robot awaiting clearance on the affected aisle."""
         if alert.obstructed:
             self.obstructed_aisles.add(alert.aisle_id)
-        else:
-            self.obstructed_aisles.discard(alert.aisle_id)
-
-        if alert.obstructed:
             return self._try_reroute(alert, log)
 
+        # Only release clearance if we previously saw this aisle obstructed;
+        # stale clear-alerts from prior test cycles must not trigger PROCEED.
+        if alert.aisle_id not in self.obstructed_aisles:
+            log.debug("alert.ignored_stale_clear", aisle=alert.aisle_id)
+            return None
+        self.obstructed_aisles.discard(alert.aisle_id)
         return self._try_release_clearance(alert.aisle_id, log)
 
     def _try_reroute(
