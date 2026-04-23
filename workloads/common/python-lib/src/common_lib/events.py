@@ -125,6 +125,18 @@ class CameraFrameEvent(BaseModel):
     emitted_at: datetime = Field(default_factory=_now)
 
 
+class CameraCommand(BaseModel):
+    """State-change command published by wms-stub, consumed by fake-camera."""
+
+    model_config = ConfigDict(frozen=True)
+
+    command_id: UUID = Field(default_factory=uuid4)
+    trace_id: str
+    camera_id: str
+    state: str = Field(description="Target state: 'empty', 'obstructed', etc.")
+    emitted_at: datetime = Field(default_factory=_now)
+
+
 class SafetyAlert(BaseModel):
     """Obstruction / safety alert emitted by obstruction-detector to
     `fleet.safety.alerts`. Fleet Manager consumes these and replans if any

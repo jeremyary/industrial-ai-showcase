@@ -15,3 +15,24 @@ spec:
     kind: Service
     name: isaac-sim
     weight: 100
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: isaac-sim-signaling
+  namespace: isaac-sim
+  labels:
+    app: isaac-sim
+  annotations:
+    haproxy.router.openshift.io/timeout: 1h
+    haproxy.router.openshift.io/timeout-tunnel: 1h
+spec:
+  port:
+    targetPort: tcp-webrtc
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  to:
+    kind: Service
+    name: isaac-sim
+    weight: 100

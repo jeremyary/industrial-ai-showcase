@@ -15,8 +15,8 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from common_lib.events import CameraFrameEvent
-from common_lib.kafka import JsonProducer
+from common_lib.events import CameraCommand, CameraFrameEvent
+from common_lib.kafka import JsonConsumer, JsonProducer
 
 if TYPE_CHECKING:
     from structlog.stdlib import BoundLogger
@@ -29,6 +29,36 @@ class StateHolder:
     """Thread-safe-enough current-state reference for the publish loop."""
 
     current: str
+
+
+def command_consumer_loop(
+    settings: "FakeCameraSettings",
+    frames: dict[str, bytes],
+    state: StateHolder,
+    extra_config: dict[str, str | int | bool],
+    log: "BoundLogger",
+) -> None:
+    """Blocking loop — run in a daemon thread. Consumes CameraCommand from Kafka."""
+    consumer = JsonConsumer(
+        bootstrap_servers=settings.kafka_bootstrap_servers,
+        group_id=f"{settings.service_name}-cmd",
+        topic=settings.command_topic,
+        model=CameraCommand,
+        auto_offset_reset="latest",
+        extra_config=extra_config,
+    )
+    log.info("command_consumer.started", topic=settings.command_topic)
+    try:
+        for cmd in consumer.iter(timeout=1.0):
+            if cmd.state not in frames:
+                log.warning("command_consumer.unknown_state", state=cmd.state, known=list(frames.keys()))
+                continue
+            previous = state.current
+            state.current = cmd.state
+            log.info("command_consumer.state_changed", from_=previous, to=cmd.state, trace_id=cmd.trace_id)
+            consumer.commit()
+    finally:
+        consumer.close()
 
 
 async def publish_loop(

@@ -42,8 +42,10 @@ spec:
               value: PLAINTEXT
             - name: MISSIONS_TOPIC
               value: fleet.missions
-            - name: FAKE_CAMERA_URL
-              value: "http://fake-camera-warehouse-edge.apps.companion.lab.local"
+            - name: CAMERA_COMMANDS_TOPIC
+              value: warehouse.cameras.commands
+            - name: CAMERA_ID
+              value: cam-aisle-3
           resources:
             requests:
               cpu: 100m

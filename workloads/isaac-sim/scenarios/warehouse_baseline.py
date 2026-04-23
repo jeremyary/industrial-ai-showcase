@@ -1,33 +1,28 @@
 # This project was developed with assistance from AI tools.
-"""Phase-1 warehouse scenario — Nucleus scene-pack + Kafka twin-update.
+"""Phase-1 warehouse scenario — Nucleus scene + Kafka twin-update.
 
-Opens the scene-pack overlay from Nucleus (warehouse + forklift + markers
-composed via sublayer). Subscribes to fleet.telemetry and fleet.safety.alerts
-on background threads; prim updates are queued and applied on Kit's main-thread
-update tick.
+Opens the customized warehouse scene from Nucleus. Subscribes to
+fleet.telemetry and fleet.safety.alerts on background threads; prim updates
+are queued and applied on Kit's main-thread update tick.
 
-Chains viewport_mjpeg.py for the MJPEG viewport broadcaster and installs a
-camera-orbit tick for guaranteed viewport motion.
+Chains viewport_mjpeg.py for the MJPEG viewport broadcaster and sets a
+static camera position for the demo viewpoint.
 
 Env contract:
-    SCENE_PACK_URL          — omniverse:// URL of the scene-pack overlay on Nucleus
+    SCENE_PACK_URL          — omniverse:// URL of the warehouse scene on Nucleus
     NUCLEUS_USER            — Nucleus auth user (default "omniverse")
     NUCLEUS_PASS            — Nucleus auth password
     KAFKA_BOOTSTRAP_SERVERS — Kafka bootstrap (default fleet-kafka-bootstrap.fleet-ops.svc:9092)
     KAFKA_SECURITY_PROTOCOL — PLAINTEXT (default) or SSL
-    PALLET_ASSET_URL        — omniverse:// URL for the pallet USD asset (optional;
-                              falls back to a red-cube marker if unset)
-    SCENE_CAMERA_ORBIT      — "1" (default) to orbit, "0" to disable
 """
 
 import asyncio
 import json
-import math
 import os
 import queue
 import threading
-import time
 import traceback
+import uuid
 
 import carb
 import omni.kit.app
@@ -41,16 +36,37 @@ NUCLEUS_PASS = os.environ.get("NUCLEUS_PASS", "")
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "fleet-kafka-bootstrap.fleet-ops.svc:9092")
 KAFKA_SECURITY_PROTOCOL = os.environ.get("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT")
 
-FORKLIFT_PRIM = "/World/Robots/fl_07"
-PALLET_PRIM = "/World/Obstructions/aisle_3_pallet"
-PALLET_ASSET_URL = os.environ.get("PALLET_ASSET_URL", "")
-PALLET_POS = (1.0, 0.0, 0.0)
+FORKLIFT_PRIM = "/Root/Warehouse/Assets/forklift"
+FORKLIFT_START = (-22.82, 5.8, 0.0)
+FORKLIFT_ROT_Z = 90.0
+
+OBSTRUCTION_PRIMS = [
+    "/Root/Warehouse/Assets/SM_PaletteA_3218/SM_PaletteA_01",
+    "/Root/Warehouse/Assets/Box_19583/SM_CardBoxA_02",
+    "/Root/Warehouse/Assets/Box_19581/SM_CardBoxD_03",
+]
+FALLEN_POSES = [
+    ((-1.18085, 0.0, -2.5), (-2.441, -34.975, -1.4)),
+    ((-2.56227, -1.87009, -2.65), (-69.77561, -86.7106, 208.01714)),
+    ((-3.0, 0.0, -3.01), (0.0, 0.0, -52.0)),
+]
 
 _CMD_QUEUE: "queue.Queue[tuple]" = queue.Queue(maxsize=64)
 
 _AUTH_SUB = None
 _UPDATE_SUB = None
-_ORBIT_SUB = None
+_CAMERA_SUB = None
+_forklift_translate_op = None
+_forklift_rotate_op = None
+
+_lerp_from_pos = None
+_lerp_from_yaw = 0.0
+_lerp_to_pos = None
+_lerp_to_yaw = 0.0
+_lerp_t = 1.0
+_lerp_speed = 0.0
+
+_original_xforms: dict[str, "Gf.Matrix4d"] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +74,6 @@ _ORBIT_SUB = None
 # ---------------------------------------------------------------------------
 
 def _register_nucleus_auth() -> None:
-    """Register auth callback before Kit attempts any Nucleus connections."""
     import omni.client
 
     def _cb(url: str):
@@ -80,14 +95,13 @@ async def _open_scene() -> None:
     ctx = omni.usd.get_context()
 
     if SCENE_PACK_URL:
-        carb.log_info(f"warehouse_baseline: opening scene-pack {SCENE_PACK_URL}")
+        carb.log_info(f"warehouse_baseline: opening scene {SCENE_PACK_URL}")
         result, err = await ctx.open_stage_async(SCENE_PACK_URL)
         if not result:
-            raise RuntimeError(f"failed to open scene-pack: {err}")
-        carb.log_info("warehouse_baseline: scene-pack opened")
+            raise RuntimeError(f"failed to open scene: {err}")
+        carb.log_info("warehouse_baseline: scene opened")
         return
 
-    # Fallback: CDN warehouse (for KAS sessions without Nucleus env vars).
     from isaacsim.storage.native import get_assets_root_path_async
     asset_root = await get_assets_root_path_async()
     if not asset_root:
@@ -97,17 +111,19 @@ async def _open_scene() -> None:
     result, err = await ctx.open_stage_async(url)
     if not result:
         raise RuntimeError(f"failed to open CDN stage: {err}")
-    carb.log_info("warehouse_baseline: CDN warehouse opened (fallback)")
 
 
 # ---------------------------------------------------------------------------
 # Kafka consumers (daemon threads)
 # ---------------------------------------------------------------------------
 
+_SESSION_ID = uuid.uuid4().hex[:8]
+
+
 def _make_consumer_conf(group_id: str) -> dict:
     conf = {
         "bootstrap.servers": KAFKA_BOOTSTRAP,
-        "group.id": group_id,
+        "group.id": f"{group_id}-{_SESSION_ID}",
         "auto.offset.reset": "latest",
         "enable.auto.commit": True,
     }
@@ -166,7 +182,7 @@ def _alerts_consumer() -> None:
             data = json.loads(msg.value())
             obstructed = data.get("obstructed", False)
             try:
-                _CMD_QUEUE.put_nowait(("obstruction", PALLET_PRIM, obstructed))
+                _CMD_QUEUE.put_nowait(("obstruction", obstructed))
             except queue.Full:
                 pass
         except (json.JSONDecodeError, ValueError):
@@ -177,10 +193,18 @@ def _alerts_consumer() -> None:
 # Main-thread prim updater (Kit update tick)
 # ---------------------------------------------------------------------------
 
+def _shortest_yaw(a: float, b: float) -> float:
+    """Return delta from a to b via the shortest arc (handles wraparound)."""
+    d = (b - a) % 360.0
+    if d > 180.0:
+        d -= 360.0
+    return d
+
+
 def _apply_updates(_event) -> None:
-    """Drain command queue and update USD prims on Kit's main thread."""
+    """Drain command queue, interpolate forklift, update USD prims."""
     try:
-        from pxr import Gf, Sdf, UsdGeom
+        from pxr import Gf, UsdGeom
     except Exception:
         return
 
@@ -188,85 +212,152 @@ def _apply_updates(_event) -> None:
     if stage is None:
         return
 
+    global _forklift_translate_op, _forklift_rotate_op
+    global _lerp_from_pos, _lerp_from_yaw, _lerp_to_pos, _lerp_to_yaw
+    global _lerp_t, _lerp_speed
+
+    TELEMETRY_HZ = 5.0
+    KIT_HZ_ESTIMATE = 60.0
+    LERP_STEP = TELEMETRY_HZ / KIT_HZ_ESTIMATE
+
+    latest_move = None
+    obstruction_cmds = []
     while not _CMD_QUEUE.empty():
         try:
             cmd = _CMD_QUEUE.get_nowait()
         except queue.Empty:
             break
-
         if cmd[0] == "move":
-            prim_path, pose = cmd[1], cmd[2]
+            latest_move = cmd
+        else:
+            obstruction_cmds.append(cmd)
+
+    if latest_move is not None:
+        _, prim_path, pose = latest_move
+        new_pos = Gf.Vec3d(
+            float(pose.get("x", 0)),
+            float(pose.get("y", 0)),
+            float(pose.get("z", 0)),
+        )
+        new_yaw = float(pose.get("yaw", FORKLIFT_ROT_Z))
+
+        if _lerp_to_pos is not None:
+            _lerp_from_pos = Gf.Vec3d(
+                _lerp_from_pos[0] + (_lerp_to_pos[0] - _lerp_from_pos[0]) * min(_lerp_t, 1.0),
+                _lerp_from_pos[1] + (_lerp_to_pos[1] - _lerp_from_pos[1]) * min(_lerp_t, 1.0),
+                _lerp_from_pos[2] + (_lerp_to_pos[2] - _lerp_from_pos[2]) * min(_lerp_t, 1.0),
+            )
+            _lerp_from_yaw = _lerp_from_yaw + _shortest_yaw(_lerp_from_yaw, _lerp_to_yaw) * min(_lerp_t, 1.0)
+        else:
+            _lerp_from_pos = new_pos
+            _lerp_from_yaw = new_yaw
+
+        _lerp_to_pos = new_pos
+        _lerp_to_yaw = new_yaw
+        _lerp_t = 0.0
+
+        if _forklift_translate_op is None:
             prim = stage.GetPrimAtPath(prim_path)
             if prim and prim.IsValid():
-                UsdGeom.XformCommonAPI(prim).SetTranslate(Gf.Vec3d(
-                    float(pose.get("x", 0)),
-                    float(pose.get("y", 0)),
-                    float(pose.get("z", 0)),
-                ))
+                xformable = UsdGeom.Xformable(prim)
+                xformable.ClearXformOpOrder()
+                _forklift_translate_op = xformable.AddTranslateOp()
+                _forklift_translate_op.Set(new_pos)
+                _forklift_rotate_op = xformable.AddRotateXYZOp()
+                _forklift_rotate_op.Set(Gf.Vec3f(0, 0, new_yaw))
 
-        elif cmd[0] == "obstruction":
-            prim_path, obstructed = cmd[1], cmd[2]
-            prim = stage.GetPrimAtPath(prim_path)
-
-            if obstructed:
-                if not prim or not prim.IsValid():
-                    if PALLET_ASSET_URL:
-                        xf = UsdGeom.Xform.Define(stage, Sdf.Path(prim_path))
-                        xf.GetPrim().GetReferences().AddReference(PALLET_ASSET_URL)
-                    else:
-                        cube = UsdGeom.Cube.Define(stage, Sdf.Path(prim_path))
-                        cube.CreateSizeAttr(0.8)
-                        cube.CreateDisplayColorAttr([(0.9, 0.15, 0.1)])
-                    UsdGeom.XformCommonAPI(
-                        stage.GetPrimAtPath(prim_path)
-                    ).SetTranslate(Gf.Vec3d(*PALLET_POS))
-                    prim = stage.GetPrimAtPath(prim_path)
-                UsdGeom.Imageable(prim).MakeVisible()
-                carb.log_info(f"warehouse_baseline: pallet visible at {PALLET_POS}")
-
-            else:
-                if prim and prim.IsValid():
-                    UsdGeom.Imageable(prim).MakeInvisible()
-                    carb.log_info("warehouse_baseline: pallet hidden")
-
-
-# ---------------------------------------------------------------------------
-# One-shot frame dump (diagnostic — pull with `oc cp`)
-# ---------------------------------------------------------------------------
-
-def _schedule_frame_dump(delay_frames: int = 120) -> None:
-    """After *delay_frames* update ticks, capture the active viewport to PNG."""
-    _countdown = [delay_frames]
-    _dump_sub_holder = [None]
-
-    def _tick(_event) -> None:
-        _countdown[0] -= 1
-        if _countdown[0] > 0:
-            return
+    if _lerp_to_pos is not None and _lerp_t < 1.0 and _forklift_translate_op is not None:
+        _lerp_t = min(_lerp_t + LERP_STEP, 1.0)
+        t = _lerp_t
+        cur_pos = Gf.Vec3d(
+            _lerp_from_pos[0] + (_lerp_to_pos[0] - _lerp_from_pos[0]) * t,
+            _lerp_from_pos[1] + (_lerp_to_pos[1] - _lerp_from_pos[1]) * t,
+            _lerp_from_pos[2] + (_lerp_to_pos[2] - _lerp_from_pos[2]) * t,
+        )
+        cur_yaw = _lerp_from_yaw + _shortest_yaw(_lerp_from_yaw, _lerp_to_yaw) * t
         try:
-            import omni.kit.viewport.utility as vp_util
-            vp_api = vp_util.get_active_viewport()
-            if vp_api is None:
-                print("[frame_dump] no active viewport", flush=True)
-                return
-            print(f"[frame_dump] active viewport camera: {vp_api.camera_path}", flush=True)
-            print(f"[frame_dump] viewport resolution: {vp_api.resolution}", flush=True)
+            _forklift_translate_op.Set(cur_pos)
+            _forklift_rotate_op.Set(Gf.Vec3f(0, 0, cur_yaw))
+        except Exception:
+            _forklift_translate_op = None
+            _forklift_rotate_op = None
 
-            from omni.kit.viewport.utility import capture_viewport_to_file
-            out = "/tmp/viewport_frame.png"
-            capture_viewport_to_file(vp_api, out)
-            print(f"[frame_dump] capture_viewport_to_file called → {out}", flush=True)
-        except Exception as e:
-            print(f"[frame_dump] error: {e}", flush=True)
-        finally:
-            _dump_sub_holder[0] = None
+    for cmd in obstruction_cmds:
+        if cmd[0] != "obstruction":
+            continue
+        obstructed = cmd[1]
 
-    _dump_sub_holder[0] = (
-        omni.kit.app.get_app()
-        .get_update_event_stream()
-        .create_subscription_to_pop(_tick, name="frame_dump")
-    )
-    print(f"[frame_dump] scheduled capture in {delay_frames} frames", flush=True)
+        if obstructed:
+            for i, prim_path in enumerate(OBSTRUCTION_PRIMS):
+                prim = stage.GetPrimAtPath(prim_path)
+                if not prim or not prim.IsValid():
+                    carb.log_warn(f"warehouse_baseline: obstruction prim missing: {prim_path}")
+                    continue
+                pos, rot = FALLEN_POSES[i]
+                xformable = UsdGeom.Xformable(prim)
+                xformable.ClearXformOpOrder()
+                xformable.AddTranslateOp().Set(Gf.Vec3d(*pos))
+                xformable.AddRotateXYZOp().Set(Gf.Vec3f(*rot))
+                xformable.AddScaleOp().Set(Gf.Vec3f(0.01, 0.01, 0.01))
+                UsdGeom.Imageable(prim).MakeVisible()
+            carb.log_info("warehouse_baseline: pallet + boxes moved to fallen positions")
+
+        else:
+            _reset_scene()
+            carb.log_info("warehouse_baseline: scene reset (clear-pallet)")
+
+
+# ---------------------------------------------------------------------------
+# Scene reset (startup + on-demand via reset command)
+# ---------------------------------------------------------------------------
+
+def _capture_original_xforms() -> None:
+    """Snapshot the authored transforms of all managed prims after scene load."""
+    from pxr import UsdGeom
+
+    stage = omni.usd.get_context().get_stage()
+    if stage is None:
+        return
+    for prim_path in [FORKLIFT_PRIM] + OBSTRUCTION_PRIMS:
+        prim = stage.GetPrimAtPath(prim_path)
+        if prim and prim.IsValid():
+            _original_xforms[prim_path] = UsdGeom.Xformable(prim).GetLocalTransformation()
+    print(f"[warehouse_baseline] captured {len(_original_xforms)} original xforms", flush=True)
+
+
+def _reset_scene() -> None:
+    """Snap forklift and obstruction prims back to their original positions."""
+    from pxr import UsdGeom
+
+    global _forklift_translate_op, _forklift_rotate_op
+    global _lerp_from_pos, _lerp_from_yaw, _lerp_to_pos, _lerp_to_yaw, _lerp_t
+    _forklift_translate_op = None
+    _forklift_rotate_op = None
+    _lerp_from_pos = None
+    _lerp_to_pos = None
+    _lerp_t = 1.0
+
+    stage = omni.usd.get_context().get_stage()
+    if stage is None:
+        return
+
+    for prim_path, mat in _original_xforms.items():
+        prim = stage.GetPrimAtPath(prim_path)
+        if not prim or not prim.IsValid():
+            continue
+        xformable = UsdGeom.Xformable(prim)
+        xformable.ClearXformOpOrder()
+        op = xformable.AddTransformOp()
+        op.Set(mat)
+        UsdGeom.Imageable(prim).MakeVisible()
+
+    print(f"[warehouse_baseline] scene reset to original xforms", flush=True)
+
+    while not _CMD_QUEUE.empty():
+        try:
+            _CMD_QUEUE.get_nowait()
+        except queue.Empty:
+            break
 
 
 # ---------------------------------------------------------------------------
@@ -280,48 +371,7 @@ async def _run() -> None:
         await _open_scene()
         print("[warehouse_baseline] scene opened successfully", flush=True)
 
-        stage = omni.usd.get_context().get_stage()
-        if stage:
-            from pxr import UsdGeom, Gf
-            top_prims = [str(p.GetPath()) for p in stage.GetPseudoRoot().GetChildren()]
-            print(f"[warehouse_baseline] top-level prims: {top_prims}", flush=True)
-
-            bbox_cache = UsdGeom.BBoxCache(0.0, [UsdGeom.Tokens.default_])
-            for prim_path in top_prims:
-                prim = stage.GetPrimAtPath(prim_path)
-                if prim and prim.IsValid():
-                    try:
-                        bbox = bbox_cache.ComputeWorldBound(prim)
-                        rng = bbox.GetRange()
-                        if not rng.IsEmpty():
-                            print(f"[warehouse_baseline] bbox {prim_path}: min={rng.GetMin()} max={rng.GetMax()} center={rng.GetMidpoint()}", flush=True)
-                    except Exception:
-                        pass
-
-            cameras = [str(p.GetPath()) for p in stage.Traverse() if p.IsA(UsdGeom.Camera)]
-            print(f"[warehouse_baseline] cameras in scene: {cameras}", flush=True)
-
-            for cam_path in cameras[:5]:
-                cam_prim = stage.GetPrimAtPath(cam_path)
-                xf = UsdGeom.XformCommonAPI(cam_prim)
-                try:
-                    pos = xf.GetXformVectors(0.0)[0]
-                    print(f"[warehouse_baseline] camera {cam_path} pos={pos}", flush=True)
-                except Exception:
-                    xformable = UsdGeom.Xformable(cam_prim)
-                    world_xf = xformable.ComputeLocalToWorldTransform(0.0)
-                    print(f"[warehouse_baseline] camera {cam_path} world_xform={world_xf.ExtractTranslation()}", flush=True)
-
-            from pxr import UsdLux, Sdf
-            lights = [str(p.GetPath()) for p in stage.Traverse() if p.HasAPI(UsdLux.LightAPI)]
-            print(f"[warehouse_baseline] lights in scene: {lights}", flush=True)
-
-            if not lights:
-                print("[warehouse_baseline] NO LIGHTS FOUND — adding dome light", flush=True)
-                dome = UsdLux.DomeLight.Define(stage, Sdf.Path("/World/DomeLight"))
-                dome.CreateIntensityAttr(1000.0)
-                dome.CreateTextureFormatAttr("latlong")
-                print("[warehouse_baseline] dome light added at /World/DomeLight", flush=True)
+        _capture_original_xforms()
 
         threading.Thread(target=_telemetry_consumer, daemon=True, name="twin-telemetry").start()
         threading.Thread(target=_alerts_consumer, daemon=True, name="twin-alerts").start()
@@ -335,8 +385,6 @@ async def _run() -> None:
 
         omni.timeline.get_timeline_interface().play()
         print("[warehouse_baseline] timeline playing, twin subscribers active", flush=True)
-
-        _schedule_frame_dump(delay_frames=600)
     except Exception:
         print(f"[warehouse_baseline] _run() FAILED: {traceback.format_exc()}", flush=True)
         carb.log_error("warehouse_baseline: " + traceback.format_exc())
@@ -357,22 +405,18 @@ import viewport_mjpeg  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------------
-# Camera orbit (guaranteed viewport motion for the MJPEG stream)
+# Static camera position (demo viewpoint)
 # ---------------------------------------------------------------------------
 
-def _install_camera_orbit() -> None:
-    if os.environ.get("SCENE_CAMERA_ORBIT", "1") == "0":
-        print("[camera_orbit] disabled via env", flush=True)
-        return
+def _install_camera_setup() -> None:
     try:
         from pxr import Gf, UsdGeom
     except Exception:
-        print("[camera_orbit] pxr imports unavailable", flush=True)
         return
 
     camera_path = "/OmniverseKit_Persp"
     cam_pos = Gf.Vec3d(-12.766, -6.168, 6.569)
-    cam_axis = Gf.Vec3d(0.9980, 0.0387, 0.0504)
+    cam_axis = Gf.Vec3d(0.998, 0.0387, 0.0504)
     cam_angle = 75.14
     _applied = [False]
 
@@ -382,6 +426,8 @@ def _install_camera_orbit() -> None:
         try:
             stage = omni.usd.get_context().get_stage()
             if stage is None:
+                return
+            if not stage.GetPrimAtPath(FORKLIFT_PRIM).IsValid():
                 return
             cam = stage.GetPrimAtPath(camera_path)
             if not cam or not cam.IsValid():
@@ -399,13 +445,14 @@ def _install_camera_orbit() -> None:
         except Exception as e:
             print(f"[camera_setup] error: {e}", flush=True)
 
-    global _ORBIT_SUB
-    _ORBIT_SUB = (
+    global _CAMERA_SUB
+    _CAMERA_SUB = (
         omni.kit.app.get_app()
         .get_update_event_stream()
         .create_subscription_to_pop(_tick, name="camera_setup")
     )
-    print("[camera_setup] waiting for scene to set camera position", flush=True)
 
 
-_install_camera_orbit()
+_install_camera_setup()
+
+

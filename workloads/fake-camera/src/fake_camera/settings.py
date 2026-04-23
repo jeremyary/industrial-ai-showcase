@@ -31,6 +31,10 @@ class FakeCameraSettings(ServiceSettings):
     )
     initial_state: str = Field(default="empty")
 
+    # Command topic — wms-stub publishes CameraCommand here; this service
+    # consumes it to toggle frame state over Kafka (cross-cluster).
+    command_topic: str = Field(default="warehouse.cameras.commands")
+
     # Publish rate
     publish_hz: float = Field(default=1.0, gt=0.0)
 

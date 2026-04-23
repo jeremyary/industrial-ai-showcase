@@ -39,8 +39,7 @@ def _near_approach_point(pose: dict[str, float], aisle: str) -> tuple[bool, str]
     x = pose.get("x", 0.0)
     y = pose.get("y", 0.0)
     ap_coords = {
-        "aisle-3": (-9.0, 0.0),
-        "aisle-4": (-9.0, 4.0),
+        "aisle-3": (-16.82, 5.8),
     }
     for aisle_id, (ax, ay) in ap_coords.items():
         if ((x - ax) ** 2 + (y - ay) ** 2) ** 0.5 <= APPROACH_POINT_RADIUS:

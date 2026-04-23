@@ -24,6 +24,9 @@ spec:
               kubernetes.io/metadata.name: fleet-ops
         - namespaceSelector:
             matchLabels:
+              kubernetes.io/metadata.name: omni-streaming
+        - namespaceSelector:
+            matchLabels:
               kubernetes.io/metadata.name: openshift-ingress
         - namespaceSelector:
             matchLabels:

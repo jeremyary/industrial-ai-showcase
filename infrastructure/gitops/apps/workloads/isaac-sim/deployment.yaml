@@ -44,9 +44,10 @@ spec:
             - -c
             - |
               set -e
-              # confluent-kafka wheel includes librdkafka — no system deps needed.
               /isaac-sim/kit/python/bin/python3 -m pip install --quiet confluent-kafka || true
+              [ -f /tmp/ffmpeg ] || /isaac-sim/kit/python/bin/python3 -c "import lzma,tarfile,urllib.request,os;r=urllib.request.urlopen('https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz',timeout=120);xz=lzma.open(r);t=tarfile.open(fileobj=xz,mode='r|');[((lambda m:(open('/tmp/ffmpeg','wb').write(t.extractfile(m).read()),os.chmod('/tmp/ffmpeg',0o755)))(m)) for m in t if m.name.endswith('/bin/ffmpeg') and m.isfile()][:1]" || true
               /isaac-sim/runheadless.sh \
+                --/app/window/hideUi=true \
                 --/app/livestream/webrtcEnabled=true \
                 --/app/livestream/nativeStreamerEnabled=true \
                 --/persistent/isaac/asset_root/default="omniverse://nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com/Projects/showcase/assets/Isaac/6.0" \
@@ -62,7 +63,7 @@ spec:
             - name: OMNI_SERVER
               value: "omniverse://nucleus-api.omniverse-nucleus.svc.cluster.local"
             - name: SCENE_PACK_URL
-              value: "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Usd_Explorer/Samples/Examples/2023_2/Warehouse/Warehouse.usd"
+              value: "omniverse://nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com/Projects/showcase/custom/Warehouse_edit.usd"
             - name: NUCLEUS_USER
               value: omniverse
             - name: NUCLEUS_PASS
@@ -75,7 +76,11 @@ spec:
             - name: KAFKA_SECURITY_PROTOCOL
               value: PLAINTEXT
             - name: PALLET_ASSET_URL
-              value: "omniverse://nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com/Projects/showcase/assets/Isaac/6.0/NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Shipping/Cardboard_Boxes_on_Pallet/Standard_A/CbrdBoxesOnPlt_A01_106x106x80cm_PR_NVD_01.usd"
+              value: ""
+            - name: WARP_CACHE_PATH
+              value: /tmp/warp_cache
+            - name: MPLCONFIGDIR
+              value: /tmp/matplotlib
             - name: NVIDIA_VISIBLE_DEVICES
               value: "all"
             - name: NVIDIA_DRIVER_CAPABILITIES

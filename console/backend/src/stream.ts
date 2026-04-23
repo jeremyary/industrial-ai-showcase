@@ -6,4 +6,12 @@ export function registerStreamRoutes(fastify: FastifyInstance, config: AppConfig
   fastify.get("/api/stream/mjpeg-url", async () => ({
     url: config.mjpegUrl,
   }));
+
+  fastify.get("/api/stream/config", async () => ({
+    signalingServer: config.signalingServer,
+    turn: config.turnUrl
+      ? { urls: config.turnUrl, username: config.turnUsername, credential: config.turnCredential }
+      : null,
+    mjpegUrl: config.mjpegUrl,
+  }));
 }

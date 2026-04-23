@@ -42,14 +42,8 @@ spec:
               [ "$rc" -ne 0 ] && sleep 1800
               exit $rc
           env:
-            - name: ISAAC_VERSION
-              value: "6.0"
             - name: LOCAL_STAGING
               value: /staging
-            # External Route — after routes.yaml had its TLS block removed
-            # to match upstream (ADR-027 / Session 19), omni.client's
-            # wss:// redirect-derailment is gone. External advertised URL
-            # is the canonical way since SERVICE_DEPLOYMENTS advertises it.
             - name: NUCLEUS_HOST
               value: nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com
             - name: NUCLEUS_USER
@@ -60,7 +54,7 @@ spec:
                   name: nucleus-passwords
                   key: master-password
             - name: NUCLEUS_ROOT
-              value: /Projects/showcase/assets
+              value: /Projects/showcase/custom
           resources:
             requests:
               cpu: 500m
@@ -72,6 +66,9 @@ spec:
           volumeMounts:
             - name: scripts
               mountPath: /scripts
+            - name: scene
+              mountPath: /scene
+              readOnly: true
             - name: staging
               mountPath: /staging
       nodeSelector:
@@ -87,6 +84,10 @@ spec:
           configMap:
             name: nucleus-seeder-scripts
             defaultMode: 0755
+        - name: scene
+          configMap:
+            name: nucleus-seeder-scene
+            defaultMode: 0444
         - name: staging
           emptyDir:
             sizeLimit: 30Gi

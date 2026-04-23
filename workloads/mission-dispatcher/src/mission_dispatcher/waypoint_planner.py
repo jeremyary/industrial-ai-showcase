@@ -1,11 +1,11 @@
 # This project was developed with assistance from AI tools.
 """Waypoint planner — interpolates poses along a route and emits telemetry.
 
-Phase 1 topology is hard-coded from warehouse-topology.yaml. Phase 2 loads
-the topology file at startup and builds routes dynamically.
+Phase 1 topology is hard-coded from the warehouse scene layout. Phase 2
+loads from warehouse-topology.yaml at startup.
 
 Tick rate is configurable via WAYPOINT_HZ (default 5 Hz). Each tick publishes
-a FleetTelemetry message with the current interpolated pose.
+a FleetTelemetry message with the current interpolated pose including yaw.
 """
 
 from __future__ import annotations
@@ -21,21 +21,28 @@ if TYPE_CHECKING:
     from common_lib.kafka import JsonProducer
     from structlog.stdlib import BoundLogger
 
-COORDS: dict[str, tuple[float, float, float]] = {
-    "dock-a": (-12.0, 0.0, 0.0),
-    "dock-b": (15.0, 0.0, 0.0),
-    "aisle-3-west": (-9.0, 0.0, 0.0),
-    "aisle-3-east": (13.0, 0.0, 0.0),
-    "aisle-4-west": (-9.0, 4.0, 0.0),
-    "aisle-4-east": (13.0, 4.0, 0.0),
+COORDS: dict[str, tuple[float, float, float, float]] = {
+    "dock-a": (-22.82, 5.8, 0.0, 90.0),
+    "aisle-3-approach": (-16.82, 5.8, 0.0, 90.0),
+    "aisle-3-end": (-7.82, 5.8, 0.0, 90.0),
+    "dock-b-3": (4.18, 5.8, 0.0, 90.0),
+    "aisle-4-turn-in": (-7.82, 5.8, 0.0, 180.0),
+    "aisle-4-end": (-7.82, 27.8, 0.0, 180.0),
+    "aisle-4-turn-out": (-7.82, 27.8, 0.0, 90.0),
+    "aisle-4-exit": (4.18, 27.8, 0.0, 90.0),
 }
 
 ROUTES: dict[str, list[str]] = {
-    "aisle-3": ["dock-a", "aisle-3-west", "aisle-3-east", "dock-b"],
-    "aisle-4": ["dock-a", "aisle-4-west", "aisle-4-east", "dock-b"],
+    "aisle-3": ["dock-a", "aisle-3-approach", "aisle-3-end", "dock-b-3"],
+    "aisle-4": [
+        "aisle-3-approach", "aisle-3-end", "aisle-4-turn-in",
+        "aisle-4-end", "aisle-4-turn-out", "aisle-4-exit",
+    ],
 }
 
-APPROACH_POINTS = {"aisle-3-west", "aisle-4-west"}
+APPROACH_POINTS = {"aisle-3-approach"}
+
+ANGULAR_SPEED_DPS = 90.0
 
 
 @dataclass
@@ -43,8 +50,16 @@ class Waypoint:
     x: float
     y: float
     z: float
+    yaw: float = 0.0
     is_approach_point: bool = False
     name: str = ""
+
+
+def _shortest_yaw_delta(start: float, end: float) -> float:
+    delta = (end - start) % 360.0
+    if delta > 180.0:
+        delta -= 360.0
+    return delta
 
 
 def _build_waypoints(route_name: str, speed_mps: float, hz: float) -> list[Waypoint]:
@@ -52,28 +67,32 @@ def _build_waypoints(route_name: str, speed_mps: float, hz: float) -> list[Waypo
     names = ROUTES.get(route_name, ROUTES["aisle-3"])
     waypoints: list[Waypoint] = []
     step_dist = speed_mps / hz
+    step_angle = ANGULAR_SPEED_DPS / hz
 
     for i in range(len(names) - 1):
-        start = COORDS[names[i]]
-        end = COORDS[names[i + 1]]
-        dx = end[0] - start[0]
-        dy = end[1] - start[1]
-        dz = end[2] - start[2]
+        sx, sy, sz, syaw = COORDS[names[i]]
+        ex, ey, ez, eyaw = COORDS[names[i + 1]]
+        dx, dy, dz = ex - sx, ey - sy, ez - sz
         seg_len = math.sqrt(dx * dx + dy * dy + dz * dz)
-        steps = max(1, int(seg_len / step_dist))
+        dyaw = _shortest_yaw_delta(syaw, eyaw)
+
+        dist_steps = max(1, int(seg_len / step_dist)) if seg_len > 0.01 else 1
+        angle_steps = max(1, int(abs(dyaw) / step_angle)) if abs(dyaw) > 0.5 else 1
+        steps = max(dist_steps, angle_steps)
 
         for s in range(steps):
             t = s / steps
             waypoints.append(Waypoint(
-                x=start[0] + dx * t,
-                y=start[1] + dy * t,
-                z=start[2] + dz * t,
+                x=sx + dx * t,
+                y=sy + dy * t,
+                z=sz + dz * t,
+                yaw=syaw + dyaw * t,
                 is_approach_point=(s == steps - 1 and names[i + 1] in APPROACH_POINTS),
                 name=names[i + 1] if s == steps - 1 else "",
             ))
 
-    final = COORDS[names[-1]]
-    waypoints.append(Waypoint(x=final[0], y=final[1], z=final[2], name=names[-1]))
+    fx, fy, fz, fyaw = COORDS[names[-1]]
+    waypoints.append(Waypoint(x=fx, y=fy, z=fz, yaw=fyaw, name=names[-1]))
     return waypoints
 
 
@@ -133,7 +152,7 @@ async def execute_route(
                 trace_id=execution.trace_id,
                 robot_id=execution.robot_id,
                 mission_id=execution.mission_id,
-                pose={"x": wp.x, "y": wp.y, "z": wp.z},
+                pose={"x": wp.x, "y": wp.y, "z": wp.z, "yaw": wp.yaw},
             ),
         )
         producer.flush(timeout=0.0)

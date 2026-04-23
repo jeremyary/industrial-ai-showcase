@@ -46,6 +46,8 @@ spec:
               value: /etc/kafka/ca.crt
             - name: TOPIC
               value: warehouse.cameras.aisle3
+            - name: COMMAND_TOPIC
+              value: warehouse.cameras.commands
             - name: CAMERA_ID
               value: cam-aisle-3
             - name: AISLE_ID

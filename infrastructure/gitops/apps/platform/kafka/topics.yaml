@@ -96,6 +96,22 @@ spec:
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
 metadata:
+  name: warehouse-cameras-commands
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+spec:
+  topicName: warehouse.cameras.commands
+  partitions: 1
+  replicas: 3
+  config:
+    retention.ms: 300000
+    cleanup.policy: delete
+    compression.type: producer
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
   name: fleet-safety-alerts
   namespace: fleet-ops
   labels:

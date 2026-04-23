@@ -8,6 +8,10 @@ export interface AppConfig {
   kafkaTopics: string[];
   wmsStubBaseUrl: string;
   mjpegUrl: string;
+  signalingServer: string;
+  turnUrl: string;
+  turnUsername: string;
+  turnCredential: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -25,5 +29,9 @@ export function loadConfig(): AppConfig {
     wmsStubBaseUrl:
       process.env.WMS_STUB_BASE_URL ?? "http://wms-stub.fleet-ops.svc.cluster.local:8082",
     mjpegUrl: process.env.MJPEG_URL ?? "",
+    signalingServer: process.env.SIGNALING_SERVER ?? "",
+    turnUrl: process.env.TURN_URL ?? "",
+    turnUsername: process.env.TURN_USERNAME ?? "",
+    turnCredential: process.env.TURN_CREDENTIAL ?? "",
   };
 }

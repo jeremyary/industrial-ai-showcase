@@ -11,10 +11,11 @@ class WmsStubSettings(ServiceSettings):
 
     missions_topic: str = "fleet.missions"
 
-    fake_camera_url: str = Field(
-        default="",
-        description="Base URL of the companion fake-camera HTTP API, e.g. http://fake-camera-route.apps.companion.local:80. Empty disables camera state switching.",
+    camera_commands_topic: str = Field(
+        default="warehouse.cameras.commands",
+        description="Kafka topic for camera state-change commands consumed by fake-camera.",
     )
+    camera_id: str = Field(default="cam-aisle-3")
 
     default_robot_id: str = "fl-07"
     default_route_aisle: str = "aisle-3"

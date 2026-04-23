@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import pathlib
+import threading
 from contextlib import asynccontextmanager
 
 from common_lib.kafka import JsonProducer
@@ -23,7 +24,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from fake_camera import __version__
-from fake_camera.publisher import StateHolder, publish_loop
+from fake_camera.publisher import StateHolder, command_consumer_loop, publish_loop
 from fake_camera.settings import FakeCameraSettings
 
 
@@ -86,6 +87,13 @@ async def lifespan(app: FastAPI):
     )
 
     task = asyncio.create_task(publish_loop(settings, frames, state, producer, log))
+
+    threading.Thread(
+        target=command_consumer_loop,
+        args=(settings, frames, state, _kafka_extra_config(settings), log),
+        daemon=True,
+        name="cmd-consumer",
+    ).start()
 
     app.state.settings = settings
     app.state.log = log

@@ -36,6 +36,10 @@ AISLE_3_OBSTRUCTION = Scenario(
             action="clear-pallet",
             params={"to_state": "empty"},
         ),
+        ButtonDef(
+            label="Reset Scene",
+            action="reset-scene",
+        ),
     ),
 )
 

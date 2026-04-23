@@ -1,225 +1,252 @@
 # This project was developed with assistance from AI tools.
-"""MJPEG viewport broadcaster for Isaac Sim sessions.
+"""HLS viewport streamer for Isaac Sim.
 
-Runs inside Kit (via `--exec`) alongside the warehouse scenario. Captures the
-active viewport each frame via `omni.kit.viewport.utility.capture_viewport_to_buffer`,
-JPEG-encodes on a worker thread, and serves `multipart/x-mixed-replace` on
-port 8090. The Showcase Console embeds this as a plain `<img>` tag so the
-demo gets a reliable, low-fuss view of just the scene — not the whole Kit
-application UI.
+Creates a render product (HydraTexture) attached to the scene camera,
+reads RGBA frames via the replicator "rgb" annotator on every Nth Kit
+update tick, and pipes them to an ffmpeg subprocess that encodes H.264
+with NVENC and outputs HLS segments.  The built-in HTTP server serves
+the .m3u8 playlist and .ts segments so the Showcase Console can embed
+the stream in a standard <video> element via hls.js.
 
-Threading model:
-  - Main Kit thread: subscribes to the app update-event stream. Every N
-    ticks it schedules a viewport capture. Must run here because
-    `capture_viewport_to_buffer` creates an `asyncio.Future` internally
-    and that requires an event loop on the current thread — Kit's main
-    thread is the only one that has one.
-  - Kit render thread (callback): pushes the raw RGBA pixel bytes onto a
-    bounded queue. No JPEG encoding here — encoding is CPU-heavy and we
-    don't want to stall Kit's render thread.
-  - Worker thread: pops raw bytes, JPEG-encodes with Pillow, publishes to
-    the frame broker.
-  - HTTP thread: serves MJPEG over multipart/x-mixed-replace from the
-    broker to any number of browser clients.
+Render products are independent of the viewport window — they create
+their own GPU render target and produce frames on every Kit update
+regardless of whether a display or WebRTC client is connected.  This
+is the same pipeline Isaac Sim uses for synthetic data generation.
 """
 
-import ctypes
-import io
+import os
 import queue
+import subprocess
 import threading
-import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import carb
 
 
-_PyCapsule_GetPointer = ctypes.pythonapi.PyCapsule_GetPointer
-_PyCapsule_GetPointer.restype = ctypes.c_void_p
-_PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
-
-try:
-    from PIL import Image
-except ImportError:  # pragma: no cover — Kit's python ships PIL
-    Image = None
-
-
-JPEG_QUALITY = 70
+FFMPEG_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
+FFMPEG_PATH = "/tmp/ffmpeg"
+HLS_DIR = "/tmp/hls"
 LISTEN_HOST = "0.0.0.0"
 LISTEN_PORT = 8090
-# Every Nth Kit app-update event triggers a capture. Kit runs the app
-# update loop near the render rate (60 Hz target). Capture allocates a
-# Vulkan fence + staging buffer per call; if we over-schedule (or if
-# previous captures fail), the driver leaks those and Kit eventually
-# OOMs. 10 Hz is plenty for a <img> tag and leaves headroom for Kit.
-CAPTURE_EVERY_N_TICKS = 6
-# Bounded raw-frame queue: if the encoder can't keep up we drop frames
-# rather than grow unbounded memory. One slot is enough for MJPEG — we
-# always want the freshest frame.
-RAW_QUEUE_MAX = 1
 
+CAMERA_PRIM = "/OmniverseKit_Persp"
+RESOLUTION = (1920, 1080)
+CAPTURE_EVERY_N_TICKS = 1
+TARGET_FPS = 60
 
-# ---- Frame broker (latest-wins) ---------------------------------------------
-
-
-class _FrameBroker:
-    def __init__(self) -> None:
-        self._frame: bytes | None = None
-        self._seq: int = 0
-        self._cv = threading.Condition()
-
-    def publish(self, frame: bytes) -> None:
-        with self._cv:
-            self._frame = frame
-            self._seq += 1
-            self._cv.notify_all()
-
-    def wait_newer_than(self, last_seq: int, timeout: float = 5.0):
-        with self._cv:
-            if self._seq > last_seq:
-                return self._frame, self._seq
-            self._cv.wait(timeout=timeout)
-            if self._seq > last_seq:
-                return self._frame, self._seq
-        return None, last_seq
-
-
-_BROKER = _FrameBroker()
-_RAW_QUEUE: "queue.Queue[tuple[int, int, bytes]]" = queue.Queue(maxsize=RAW_QUEUE_MAX)
-_capture_err_count = 0
-
-
-# ---- Capture callback: runs on Kit's render thread --------------------------
-
-
-def _on_capture(*args) -> None:
-    # Kit 110's ByteCapture callback signature is
-    #   on_capture(buffer_capsule, buffer_size, width, height, format_str)
-    # where buffer_capsule is a PyCapsule wrapping a void* to driver-owned
-    # RGBA memory. We copy it out immediately (before the callback returns)
-    # since Kit may reuse or free the buffer afterwards.
-    try:
-        if len(args) >= 5:
-            buffer_capsule = args[0]
-            buffer_size = int(args[1])
-            width = int(args[2])
-            height = int(args[3])
-            if buffer_size <= 0 or width <= 0 or height <= 0:
-                return
-            ptr = _PyCapsule_GetPointer(buffer_capsule, None)
-            if not ptr:
-                return
-            pixels = bytes((ctypes.c_ubyte * buffer_size).from_address(ptr))
-        else:
-            wrapper = args[0]
-            if hasattr(wrapper, "get_buffer"):
-                width = wrapper.get_width()
-                height = wrapper.get_height()
-                pixels = bytes(wrapper.get_buffer())
-            else:
-                width, height, _fmt, buf = wrapper
-                pixels = bytes(buf)
-    except Exception:
-        # Rate-limit — logging on every frame would itself impact Kit.
-        global _capture_err_count
-        _capture_err_count += 1
-        if _capture_err_count <= 3 or _capture_err_count % 200 == 0:
-            carb.log_warn(
-                f"viewport_mjpeg: capture extract failed (#{_capture_err_count}): "
-                + traceback.format_exc()
-            )
-        return
-    if not pixels or width <= 0 or height <= 0:
-        return
-    # Drop oldest if queue is full — browser should see the newest frame.
-    try:
-        _RAW_QUEUE.put_nowait((width, height, pixels))
-    except queue.Full:
-        try:
-            _RAW_QUEUE.get_nowait()
-        except queue.Empty:
-            pass
-        try:
-            _RAW_QUEUE.put_nowait((width, height, pixels))
-        except queue.Full:
-            pass
-
-
-# ---- Capture dispatcher: runs on Kit's main thread --------------------------
-
-
+_ffmpeg_proc = None
+_ffmpeg_lock = threading.Lock()
+_rgb_annotator = None
+_update_sub = None
 _tick = 0
-_update_sub = None  # noqa: N816 — Kit subscription handle must outlive this fn
+_frame_count = 0
+_setup_done = False
+_frame_queue: queue.Queue = queue.Queue(maxsize=4)
 
 
-def _schedule_capture(event) -> None:  # noqa: ARG001 — Kit passes an event arg
-    global _tick
+# ---- ffmpeg management -------------------------------------------------------
+
+
+def _download_ffmpeg() -> bool:
+    if os.path.isfile(FFMPEG_PATH):
+        return True
+    print("[viewport_stream] downloading ffmpeg...", flush=True)
+    try:
+        import lzma
+        import tarfile
+        import urllib.request
+        resp = urllib.request.urlopen(FFMPEG_URL, timeout=120)
+        with lzma.open(resp) as xz:
+            with tarfile.open(fileobj=xz, mode="r|") as tar:
+                for m in tar:
+                    if m.name.endswith("/bin/ffmpeg") and m.isfile():
+                        f = tar.extractfile(m)
+                        if f:
+                            with open(FFMPEG_PATH, "wb") as out:
+                                out.write(f.read())
+                            os.chmod(FFMPEG_PATH, 0o755)
+                            print("[viewport_stream] ffmpeg downloaded", flush=True)
+                            return True
+    except Exception:
+        print(f"[viewport_stream] ffmpeg download failed: {traceback.format_exc()}", flush=True)
+    return False
+
+
+def _start_ffmpeg() -> None:
+    global _ffmpeg_proc
+    os.makedirs(HLS_DIR, exist_ok=True)
+    for f in os.listdir(HLS_DIR):
+        os.remove(os.path.join(HLS_DIR, f))
+    w, h = RESOLUTION
+    cmd = [
+        FFMPEG_PATH, "-y",
+        "-f", "rawvideo",
+        "-pixel_format", "rgba",
+        "-video_size", f"{w}x{h}",
+        "-framerate", str(TARGET_FPS),
+        "-i", "pipe:0",
+        "-c:v", "h264_nvenc",
+        "-preset", "p4",
+        "-tune", "ll",
+        "-b:v", "8M",
+        "-maxrate", "12M",
+        "-bufsize", "16M",
+        "-g", str(TARGET_FPS),
+        "-keyint_min", str(TARGET_FPS),
+        "-f", "hls",
+        "-hls_time", "0.5",
+        "-hls_list_size", "6",
+        "-hls_flags", "delete_segments+append_list+omit_endlist",
+        "-hls_segment_type", "mpegts",
+        os.path.join(HLS_DIR, "stream.m3u8"),
+    ]
+    _ffmpeg_proc = subprocess.Popen(
+        cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    print(f"[viewport_stream] ffmpeg started ({w}x{h} -> HLS/NVENC)", flush=True)
+
+
+# ---- Render product setup (deferred until scene is loaded) -------------------
+
+
+def _scene_is_loaded() -> bool:
+    """Return True once the USD stage has a loaded scene (not just Kit defaults)."""
+    try:
+        import omni.usd
+        ctx = omni.usd.get_context()
+        if ctx is None:
+            return False
+        stage = ctx.get_stage()
+        if stage is None:
+            return False
+        return stage.GetPrimAtPath(CAMERA_PRIM).IsValid()
+    except Exception:
+        return False
+
+
+def _setup_render_product() -> bool:
+    """Create a render product + RGB annotator. Returns True on success."""
+    global _rgb_annotator, _setup_done
+
+    if not _scene_is_loaded():
+        return False
+
+    try:
+        import omni.replicator.core as rep
+    except Exception:
+        print(f"[viewport_stream] omni.replicator.core not available: {traceback.format_exc()}", flush=True)
+        return False
+
+    try:
+        rp = rep.create.render_product(CAMERA_PRIM, resolution=RESOLUTION)
+        _rgb_annotator = rep.AnnotatorRegistry.get_annotator("rgb")
+        _rgb_annotator.attach([rp.path])
+        _setup_done = True
+        print(f"[viewport_stream] render product created at {rp.path}", flush=True)
+        return True
+    except Exception:
+        print(f"[viewport_stream] render product setup failed: {traceback.format_exc()}", flush=True)
+        return False
+
+
+# ---- Capture tick: reads annotator data and writes to ffmpeg -----------------
+
+
+def _on_update(event) -> None:
+    """Grab annotator frame and enqueue for the writer thread (non-blocking)."""
+    global _tick, _setup_done
+
     _tick += 1
     if _tick % CAPTURE_EVERY_N_TICKS != 0:
         return
-    try:
-        from omni.kit.viewport.utility import capture_viewport_to_buffer, get_active_viewport
-    except Exception:
+
+    if not _setup_done:
+        if _tick % (CAPTURE_EVERY_N_TICKS * 15) == 0:
+            _setup_render_product()
         return
+
+    if _rgb_annotator is None:
+        return
+
     try:
-        vp = get_active_viewport()
-        if vp is None:
-            return
-        capture_viewport_to_buffer(vp, _on_capture)
+        data = _rgb_annotator.get_data()
     except Exception:
-        # Rate-limit noisy warnings — first time only.
-        if _tick < CAPTURE_EVERY_N_TICKS * 5:
-            carb.log_warn("viewport_mjpeg: capture schedule failed: " + traceback.format_exc())
+        _setup_done = False
+        return
+
+    if data is None:
+        return
+
+    if isinstance(data, dict):
+        data = data.get("data", None)
+        if data is None:
+            return
+
+    if hasattr(data, "ndim"):
+        if data.ndim != 3 or data.shape[0] == 0:
+            return
+        raw = data.tobytes()
+    else:
+        raw = bytes(data)
+
+    if not raw:
+        return
+
+    try:
+        _frame_queue.put_nowait(raw)
+    except queue.Full:
+        pass
 
 
-# ---- Encoder worker thread --------------------------------------------------
+def _writer_loop() -> None:
+    """Drain the frame queue and write to ffmpeg stdin (runs in its own thread)."""
+    global _ffmpeg_proc, _frame_count
 
-
-def _encode_jpeg(pixels: bytes, width: int, height: int) -> bytes:
-    if Image is None:
-        raise RuntimeError("Pillow not available in Kit's Python")
-    img = Image.frombuffer("RGBA", (width, height), pixels, "raw", "RGBA", 0, 1)
-    img = img.convert("RGB")
-    out = io.BytesIO()
-    img.save(out, format="JPEG", quality=JPEG_QUALITY)
-    return out.getvalue()
-
-
-def _encoder_loop() -> None:
     while True:
+        raw = _frame_queue.get()
+
+        if _ffmpeg_proc is None:
+            if not os.path.isfile(FFMPEG_PATH):
+                continue
+            _start_ffmpeg()
+
         try:
-            width, height, pixels = _RAW_QUEUE.get(timeout=30.0)
-        except queue.Empty:
-            continue
-        try:
-            jpeg = _encode_jpeg(pixels, width, height)
-            _BROKER.publish(jpeg)
-        except Exception:
-            carb.log_error("viewport_mjpeg: encode failed: " + traceback.format_exc())
+            _ffmpeg_proc.stdin.write(raw)
+            _ffmpeg_proc.stdin.flush()
+            _frame_count += 1
+            if _frame_count == 1:
+                print("[viewport_stream] first frame written to ffmpeg", flush=True)
+            elif _frame_count % 1800 == 0:
+                print(f"[viewport_stream] {_frame_count} frames written", flush=True)
+        except (BrokenPipeError, OSError):
+            print("[viewport_stream] ffmpeg pipe broken, restarting", flush=True)
+            with _ffmpeg_lock:
+                try:
+                    _ffmpeg_proc.kill()
+                except Exception:
+                    pass
+                _ffmpeg_proc = None
 
 
-# ---- HTTP server ------------------------------------------------------------
+# ---- HTTP server: serves HLS + health endpoints -----------------------------
 
 
-class _MjpegHandler(BaseHTTPRequestHandler):
-    def log_message(self, format: str, *args) -> None:  # noqa: A002 — stdlib signature
-        return  # silence per-request access logs
+class _HlsHandler(BaseHTTPRequestHandler):
+    def log_message(self, format: str, *args) -> None:
+        return
 
     def _send_cors(self) -> None:
-        # The Console serves from a different subdomain than this MJPEG
-        # route, so cross-origin fetch() requires permissive CORS. A
-        # plain <img> tag wouldn't need this, but the Canvas-parsing
-        # consumer uses fetch() for single-connection stream control.
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "*")
 
-    def do_OPTIONS(self) -> None:  # noqa: N802 — stdlib naming
+    def do_OPTIONS(self) -> None:
         self.send_response(204)
         self._send_cors()
         self.end_headers()
 
-    def do_GET(self) -> None:  # noqa: N802 — stdlib naming
+    def do_GET(self) -> None:
         if self.path in ("/healthz", "/health"):
             self.send_response(200)
             self._send_cors()
@@ -227,60 +254,73 @@ class _MjpegHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"ok")
             return
-        if self.path not in ("/", "/stream.mjpg", "/stream"):
-            self.send_response(404)
-            self._send_cors()
-            self.end_headers()
-            return
-        self.send_response(200)
-        self._send_cors()
-        self.send_header("Cache-Control", "no-cache, private")
-        self.send_header("Pragma", "no-cache")
-        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-        self.end_headers()
-        last_seq = 0
-        while True:
-            frame, last_seq = _BROKER.wait_newer_than(last_seq, timeout=10.0)
-            if frame is None:
-                continue
-            try:
-                self.wfile.write(b"--frame\r\n")
-                self.wfile.write(b"Content-Type: image/jpeg\r\n")
-                self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode())
-                self.wfile.write(frame)
-                self.wfile.write(b"\r\n")
-                self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError):
+
+        if self.path.startswith("/hls/"):
+            filename = self.path[5:].split("?")[0]
+            if "/" in filename or ".." in filename:
+                self.send_response(403)
+                self.end_headers()
                 return
+            filepath = os.path.join(HLS_DIR, filename)
+            if not os.path.isfile(filepath):
+                self.send_response(404)
+                self._send_cors()
+                self.end_headers()
+                return
+            with open(filepath, "rb") as f:
+                file_data = f.read()
+            self.send_response(200)
+            self._send_cors()
+            if filename.endswith(".m3u8"):
+                self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+            elif filename.endswith(".ts"):
+                self.send_header("Content-Type", "video/mp2t")
+            else:
+                self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(file_data)))
+            self.send_header("Cache-Control", "no-cache, no-store")
+            self.end_headers()
+            try:
+                self.wfile.write(file_data)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+
+        self.send_response(404)
+        self._send_cors()
+        self.end_headers()
 
 
 def _serve_forever() -> None:
-    server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), _MjpegHandler)
+    server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), _HlsHandler)
     server.daemon_threads = True
     server.allow_reuse_address = True
-    carb.log_info(f"viewport_mjpeg: serving on http://{LISTEN_HOST}:{LISTEN_PORT}/stream.mjpg")
+    print(f"[viewport_stream] HLS server on http://{LISTEN_HOST}:{LISTEN_PORT}/hls/stream.m3u8", flush=True)
     server.serve_forever()
 
 
-# ---- Bootstrap --------------------------------------------------------------
+# ---- Bootstrap ---------------------------------------------------------------
 
 
 def start() -> None:
     global _update_sub
-    threading.Thread(target=_serve_forever, daemon=True, name="mjpeg-http").start()
-    threading.Thread(target=_encoder_loop, daemon=True, name="mjpeg-encoder").start()
-    # Subscribe on Kit's main thread — needs its asyncio loop context.
+
+    threading.Thread(target=_download_ffmpeg, daemon=True, name="ffmpeg-dl").start()
+
+    threading.Thread(target=_serve_forever, daemon=True, name="hls-http").start()
+
+    threading.Thread(target=_writer_loop, daemon=True, name="ffmpeg-writer").start()
+
     try:
         import omni.kit.app
         _update_sub = (
             omni.kit.app.get_app()
             .get_update_event_stream()
-            .create_subscription_to_pop(_schedule_capture, name="viewport_mjpeg-capture")
+            .create_subscription_to_pop(_on_update, name="viewport_stream-capture")
         )
-        carb.log_info("viewport_mjpeg: subscribed to app update stream")
+        print("[viewport_stream] subscribed to update stream, will set up render product on first scene tick", flush=True)
     except Exception:
-        carb.log_error("viewport_mjpeg: failed to subscribe: " + traceback.format_exc())
-    carb.log_info("viewport_mjpeg: started http + encoder threads")
+        print(f"[viewport_stream] failed to subscribe: {traceback.format_exc()}", flush=True)
 
 
 start()

@@ -10,9 +10,11 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
+    "@nvidia/omniverse-webrtc-streaming-library": "^5.17.0",
     "@patternfly/react-core": "^6.2.0",
     "@patternfly/react-icons": "^6.2.0",
     "@patternfly/react-styles": "^6.2.0",
+    "hls.js": "^1.6.16",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

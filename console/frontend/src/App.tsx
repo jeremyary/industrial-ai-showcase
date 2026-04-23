@@ -83,7 +83,7 @@ export function App(){
 
       if (btn.action === "drop-pallet") {
         setCameraState("obstructed");
-      } else if (btn.action === "clear-pallet") {
+      } else if (btn.action === "clear-pallet" || btn.action === "reset-scene") {
         setCameraState("empty");
         setAlertActive(false);
       }
@@ -189,9 +189,10 @@ function ScenarioPanel({
     );
   }
 
-  const buttonVariant = (action: string): "primary" | "danger" | "secondary" => {
+  const buttonVariant = (action: string): "primary" | "danger" | "secondary" | "tertiary" => {
     if (action === "dispatch") return "primary";
     if (action === "drop-pallet") return "danger";
+    if (action === "reset-scene") return "tertiary";
     return "secondary";
   };
 

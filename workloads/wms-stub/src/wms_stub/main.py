@@ -3,8 +3,8 @@
 
 Provides two categories of actions for the Showcase Console buttons:
   - Dispatch: sends a FleetMission (DISPATCH) to fleet.missions
-  - Camera state: calls the companion fake-camera HTTP API to toggle
-    the frame between "empty" and "obstructed"
+  - Camera state: publishes CameraCommand to Kafka, consumed by fake-camera
+    on the companion cluster to toggle between "empty" and "obstructed"
 
 The scenario catalog (GET /scenarios) tells the Console which buttons
 to render and what actions they trigger.
@@ -14,11 +14,10 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.events import FleetMission, MissionKind
+from common_lib.events import CameraCommand, FleetMission, MissionKind, SafetyAlert
 from common_lib.kafka import JsonProducer
 from common_lib.logging import configure_logging
 from wms_stub import __version__
@@ -37,20 +36,17 @@ async def lifespan(app: FastAPI):
         "startup",
         version=__version__,
         missions_topic=settings.missions_topic,
-        fake_camera_url=settings.fake_camera_url or "(disabled)",
+        camera_commands_topic=settings.camera_commands_topic,
     )
 
     producer = JsonProducer(settings.kafka_bootstrap_servers, client_id=settings.service_name)
-    http_client = httpx.AsyncClient(timeout=5.0)
 
     app.state.settings = settings
     app.state.log = log
     app.state.producer = producer
-    app.state.http = http_client
     try:
         yield
     finally:
-        await http_client.aclose()
         producer.flush(timeout=5.0)
         log.info("shutdown")
 
@@ -166,28 +162,51 @@ async def set_camera_state(req: CameraStateRequest) -> dict[str, str]:
     return await _set_camera_state(req.state)
 
 
+@app.post("/reset-scene")
+async def reset_scene() -> dict[str, str]:
+    """Reset demo to starting state: camera→empty + immediate scene-clear alert."""
+    settings: WmsStubSettings = app.state.settings
+    log: "BoundLogger" = app.state.log
+    producer: JsonProducer = app.state.producer
+    trace_id = uuid4().hex
+
+    cmd = CameraCommand(
+        trace_id=trace_id,
+        camera_id=settings.camera_id,
+        state="empty",
+    )
+    producer.send(settings.camera_commands_topic, key=settings.camera_id, value=cmd)
+
+    alert = SafetyAlert(
+        trace_id=trace_id,
+        aisle_id="aisle-3",
+        camera_id=settings.camera_id,
+        detection_label="scene-reset",
+        confidence=1.0,
+        source_model="wms-stub",
+        obstructed=False,
+        detail="manual scene reset via console",
+    )
+    producer.send("fleet.safety.alerts", key=settings.camera_id, value=alert)
+    producer.flush(timeout=2.0)
+
+    log.info("scene.reset", trace_id=trace_id)
+    return {"status": "ok", "trace_id": trace_id}
+
+
 async def _set_camera_state(target_state: str) -> dict[str, str]:
     settings: WmsStubSettings = app.state.settings
     log: "BoundLogger" = app.state.log
-    http: httpx.AsyncClient = app.state.http
+    producer: JsonProducer = app.state.producer
 
-    if not settings.fake_camera_url:
-        raise HTTPException(
-            status_code=503,
-            detail="FAKE_CAMERA_URL not configured — camera state switching unavailable.",
-        )
+    trace_id = uuid4().hex
+    cmd = CameraCommand(
+        trace_id=trace_id,
+        camera_id=settings.camera_id,
+        state=target_state,
+    )
+    producer.send(settings.camera_commands_topic, key=settings.camera_id, value=cmd)
+    producer.flush(timeout=2.0)
 
-    url = f"{settings.fake_camera_url.rstrip('/')}/state"
-    try:
-        resp = await http.post(url, json={"state": target_state})
-        resp.raise_for_status()
-        body = resp.json()
-    except httpx.HTTPStatusError as exc:
-        log.error("camera.state.http_error", url=url, status=exc.response.status_code)
-        raise HTTPException(status_code=502, detail=f"fake-camera returned {exc.response.status_code}") from exc
-    except httpx.RequestError as exc:
-        log.error("camera.state.unreachable", url=url, error=str(exc))
-        raise HTTPException(status_code=502, detail=f"fake-camera unreachable: {exc}") from exc
-
-    log.info("camera.state.changed", target=target_state, response=body)
-    return {"status": "ok", "camera_state": body.get("state", target_state)}
+    log.info("camera.command.sent", trace_id=trace_id, target=target_state)
+    return {"status": "ok", "camera_state": target_state}
