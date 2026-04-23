@@ -378,6 +378,7 @@ def _install_camera_orbit() -> None:
     orbit_height = 80.0
     t0 = time.time()
     _log_count = [0]
+    _xform_op = [None]
 
     def _tick(_event) -> None:
         try:
@@ -394,13 +395,28 @@ def _install_camera_orbit() -> None:
             angle = (t / orbit_period_s) * 2.0 * math.pi
             x = orbit_center_x + orbit_radius * math.cos(angle)
             y = orbit_center_y + orbit_radius * math.sin(angle)
-            yaw_deg = math.degrees(math.atan2(-(y - orbit_center_y), -(x - orbit_center_x))) - 90.0
-            xf = UsdGeom.XformCommonAPI(cam)
-            xf.SetTranslate(Gf.Vec3d(x, y, orbit_height))
-            xf.SetRotate(Gf.Vec3f(65.0, 0.0, yaw_deg))
+
+            eye = Gf.Vec3d(x, y, orbit_height)
+            target = Gf.Vec3d(orbit_center_x, orbit_center_y, 0)
+            fwd = (target - eye).GetNormalized()
+            right = Gf.Cross(fwd, Gf.Vec3d(0, 0, 1)).GetNormalized()
+            up = Gf.Cross(right, fwd)
+
+            mat = Gf.Matrix4d()
+            mat.SetRow(0, Gf.Vec4d(right[0], right[1], right[2], 0))
+            mat.SetRow(1, Gf.Vec4d(up[0], up[1], up[2], 0))
+            mat.SetRow(2, Gf.Vec4d(-fwd[0], -fwd[1], -fwd[2], 0))
+            mat.SetRow(3, Gf.Vec4d(x, y, orbit_height, 1))
+
+            if _xform_op[0] is None:
+                xformable = UsdGeom.Xformable(cam)
+                xformable.ClearXformOpOrder()
+                _xform_op[0] = xformable.AddTransformOp()
+            _xform_op[0].Set(mat)
+
             _log_count[0] += 1
             if _log_count[0] <= 3 or _log_count[0] % 500 == 0:
-                print(f"[camera_orbit] tick #{_log_count[0]} pos=({x:.1f},{y:.1f},{orbit_height}) angle={math.degrees(angle):.0f}°", flush=True)
+                print(f"[camera_orbit] tick #{_log_count[0]} eye=({x:.1f},{y:.1f},{orbit_height}) fwd=({fwd[0]:.2f},{fwd[1]:.2f},{fwd[2]:.2f})", flush=True)
         except Exception as e:
             _log_count[0] += 1
             if _log_count[0] <= 5:
