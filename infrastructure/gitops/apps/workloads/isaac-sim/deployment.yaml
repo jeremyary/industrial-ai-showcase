@@ -30,6 +30,8 @@ spec:
         - key: nvidia.com/gpu
           operator: Exists
           effect: NoSchedule
+      securityContext:
+        fsGroup: 1234
       containers:
         - name: isaac-sim
           image: nvcr.io/nvidia/isaac-sim:6.0.0-dev2
