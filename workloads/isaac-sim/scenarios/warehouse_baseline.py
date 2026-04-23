@@ -371,69 +371,41 @@ def _install_camera_orbit() -> None:
         return
 
     camera_path = "/OmniverseKit_Persp"
-    orbit_center_x = -116.5
-    orbit_center_y = -110.0
-    orbit_radius = 200.0
-    orbit_period_s = 60.0
-    orbit_height = 80.0
-    t0 = time.time()
-    _log_count = [0]
-    _xform_op = [None]
+    cam_pos = Gf.Vec3d(-12.766, -6.168, 6.569)
+    cam_axis = Gf.Vec3d(0.9980, 0.0387, 0.0504)
+    cam_angle = 75.14
+    _applied = [False]
 
     def _tick(_event) -> None:
+        if _applied[0]:
+            return
         try:
             stage = omni.usd.get_context().get_stage()
             if stage is None:
                 return
             cam = stage.GetPrimAtPath(camera_path)
             if not cam or not cam.IsValid():
-                _log_count[0] += 1
-                if _log_count[0] <= 3:
-                    print(f"[camera_orbit] camera prim {camera_path} not found", flush=True)
                 return
-            t = time.time() - t0
-            angle = (t / orbit_period_s) * 2.0 * math.pi
-            x = orbit_center_x + orbit_radius * math.cos(angle)
-            y = orbit_center_y + orbit_radius * math.sin(angle)
-
-            eye = Gf.Vec3d(x, y, orbit_height)
-            target = Gf.Vec3d(orbit_center_x, orbit_center_y, 0)
-            fwd = (target - eye).GetNormalized()
-            right = Gf.Cross(fwd, Gf.Vec3d(0, 0, 1)).GetNormalized()
-            up = Gf.Cross(right, fwd)
-
+            rot = Gf.Rotation(cam_axis, cam_angle)
             mat = Gf.Matrix4d()
-            mat.SetRow(0, Gf.Vec4d(right[0], right[1], right[2], 0))
-            mat.SetRow(1, Gf.Vec4d(up[0], up[1], up[2], 0))
-            mat.SetRow(2, Gf.Vec4d(-fwd[0], -fwd[1], -fwd[2], 0))
-            mat.SetRow(3, Gf.Vec4d(x, y, orbit_height, 1))
-
-            try:
-                if _xform_op[0] is not None:
-                    _xform_op[0].Set(mat)
-                else:
-                    raise ValueError("init")
-            except Exception:
-                xformable = UsdGeom.Xformable(cam)
-                xformable.ClearXformOpOrder()
-                _xform_op[0] = xformable.AddTransformOp()
-                _xform_op[0].Set(mat)
-
-            _log_count[0] += 1
-            if _log_count[0] <= 3 or _log_count[0] % 500 == 0:
-                print(f"[camera_orbit] tick #{_log_count[0]} eye=({x:.1f},{y:.1f},{orbit_height}) fwd=({fwd[0]:.2f},{fwd[1]:.2f},{fwd[2]:.2f})", flush=True)
+            mat.SetRotate(rot)
+            mat.SetTranslateOnly(cam_pos)
+            xformable = UsdGeom.Xformable(cam)
+            xformable.ClearXformOpOrder()
+            op = xformable.AddTransformOp()
+            op.Set(mat)
+            _applied[0] = True
+            print(f"[camera_setup] set camera to pos={cam_pos}", flush=True)
         except Exception as e:
-            _log_count[0] += 1
-            if _log_count[0] <= 5:
-                print(f"[camera_orbit] tick error: {e}", flush=True)
+            print(f"[camera_setup] error: {e}", flush=True)
 
     global _ORBIT_SUB
     _ORBIT_SUB = (
         omni.kit.app.get_app()
         .get_update_event_stream()
-        .create_subscription_to_pop(_tick, name="camera_orbit")
+        .create_subscription_to_pop(_tick, name="camera_setup")
     )
-    print(f"[camera_orbit] subscribed (radius={orbit_radius}, period={orbit_period_s}s, camera={camera_path})", flush=True)
+    print("[camera_setup] waiting for scene to set camera position", flush=True)
 
 
 _install_camera_orbit()

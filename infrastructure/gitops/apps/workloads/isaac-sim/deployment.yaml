@@ -62,7 +62,7 @@ spec:
             - name: OMNI_SERVER
               value: "omniverse://nucleus-api.omniverse-nucleus.svc.cluster.local"
             - name: SCENE_PACK_URL
-              value: "omniverse://nucleus.apps.jary-qs-0323.7w5j.p1.openshiftapps.com/Projects/showcase/scene-packs/warehouse_scene_pack.usda"
+              value: "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Usd_Explorer/Samples/Examples/2023_2/Warehouse/Warehouse.usd"
             - name: NUCLEUS_USER
               value: omniverse
             - name: NUCLEUS_PASS
