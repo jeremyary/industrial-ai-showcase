@@ -95,8 +95,8 @@ export function MjpegCanvas({ src, style, onFirstFrame }: MjpegCanvasProps): Rea
 
     if (Hls.isSupported()) {
       const hls = new Hls({
-        liveSyncDurationCount: 4,
-        liveMaxLatencyDurationCount: 8,
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 5,
         liveDurationInfinity: true,
         lowLatencyMode: false,
         enableWorker: true,
@@ -131,13 +131,25 @@ export function MjpegCanvas({ src, style, onFirstFrame }: MjpegCanvasProps): Rea
 
       hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
         levelLoadCount++;
-        logDiag("LEVEL_LOADED", {
-          fragments: data.details.fragments.length,
-          live: data.details.live,
-          targetduration: data.details.targetduration,
-          totalduration: data.details.totalduration?.toFixed(2),
-          totalLoaded: levelLoadCount,
-        });
+        if (levelLoadCount <= 3 || levelLoadCount % 30 === 0) {
+          logDiag("LEVEL_LOADED", {
+            fragments: data.details.fragments.length,
+            live: data.details.live,
+            targetduration: data.details.targetduration,
+            totalduration: data.details.totalduration?.toFixed(2),
+            totalLoaded: levelLoadCount,
+          });
+        }
+
+        const syncPos = hls.liveSyncPosition;
+        if (syncPos != null && syncPos > 0 && video.currentTime > syncPos + 2) {
+          logDiag("NUDGE_BACK", {
+            from: video.currentTime.toFixed(2),
+            to: syncPos.toFixed(2),
+            overshoot: (video.currentTime - syncPos).toFixed(2),
+          });
+          video.currentTime = syncPos;
+        }
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
