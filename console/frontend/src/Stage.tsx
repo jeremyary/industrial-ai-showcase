@@ -69,19 +69,17 @@ export function StageCard(): React.ReactElement {
           </FlexItem>
         </Flex>
       </CardHeader>
-      <CardBody>
+      <CardBody className="showcase-stage-body">
         <div
           ref={stageFrameRef}
+          className="showcase-stage-viewport"
           style={{
             height: isFullscreen ? "100vh" : undefined,
             aspectRatio: isFullscreen ? undefined : "16 / 9",
-            background: "linear-gradient(135deg, #1e1e1e, #3a3a3a)",
             color: "#ddd",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: isFullscreen ? 0 : 6,
-            overflow: "hidden",
             position: "relative",
           }}
         >

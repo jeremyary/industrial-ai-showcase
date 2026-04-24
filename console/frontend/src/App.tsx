@@ -9,7 +9,6 @@ import {
   CardTitle,
   Flex,
   FlexItem,
-  Label,
   Masthead,
   MastheadBrand,
   MastheadContent,
@@ -198,7 +197,7 @@ function ScenarioPanel({
     );
   }
 
-  const buttonVariant = (action: string): "primary" | "danger" | "secondary" | "tertiary" => {
+  const buttonVariant = (action: string): "primary" | "danger" | "tertiary" | "secondary" => {
     if (action === "dispatch") return "primary";
     if (action === "drop-pallet") return "danger";
     if (action === "reset-scene") return "tertiary";
@@ -235,7 +234,7 @@ function ScenarioPanel({
 
 function TopologyCard({ topology, connected }: { topology: Topology | null; connected: boolean }){
   return (
-    <Card>
+    <Card isFullHeight>
       <CardHeader>
         <CardTitle>Topology</CardTitle>
       </CardHeader>
@@ -243,30 +242,31 @@ function TopologyCard({ topology, connected }: { topology: Topology | null; conn
         {topology === null ? (
           <Spinner size="md" />
         ) : (
-          <Stack hasGutter>
-            <StackItem>
-              <ClusterPanel title={topology.hub.name} workloads={topology.hub.workloads} />
-            </StackItem>
-            <StackItem>
-              <ClusterPanel title={topology.companion.name} workloads={topology.companion.workloads} />
-            </StackItem>
-          </Stack>
+          <Flex spaceItems={{ default: "spaceItemsLg" }}>
+            <FlexItem flex={{ default: "flex_1" }}>
+              <div className="showcase-cluster showcase-cluster--hub">
+                <div className="showcase-cluster-title">{topology.hub.name}</div>
+                <ul className="showcase-cluster-workloads">
+                  {topology.hub.workloads.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            </FlexItem>
+            <FlexItem flex={{ default: "flex_1" }}>
+              <div className="showcase-cluster showcase-cluster--companion">
+                <div className="showcase-cluster-title">{topology.companion.name}</div>
+                <ul className="showcase-cluster-workloads">
+                  {topology.companion.workloads.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            </FlexItem>
+          </Flex>
         )}
       </CardBody>
     </Card>
-  );
-}
-
-function ClusterPanel({ title, workloads }: { title: string; workloads: string[] }){
-  return (
-    <div>
-      <strong>{title}</strong>
-      <ul style={{ marginTop: 4 }}>
-        {workloads.map((w) => (
-          <li key={w}>{w}</li>
-        ))}
-      </ul>
-    </div>
   );
 }
 
@@ -274,11 +274,10 @@ function CameraFeedCard({ cameraTick }: { cameraTick: number }){
   return (
     <Card isFullHeight>
       <CardHeader><CardTitle>Camera feed</CardTitle></CardHeader>
-      <CardBody style={{ padding: 0 }}>
+      <CardBody className="showcase-camera-body">
         <img
           src={`/api/camera/frame?t=${cameraTick}`}
           alt="Camera feed"
-          style={{ width: "100%", display: "block", borderRadius: "0 0 3px 3px" }}
         />
       </CardBody>
     </Card>
@@ -309,34 +308,30 @@ function collapseEvents(events: FleetMessage[]): CollapsedEvent[] {
 function EventsCard({ events }: { events: FleetMessage[] }){
   const collapsed = useMemo(() => collapseEvents(events), [events]);
   return (
-    <Card>
+    <Card isFullHeight>
       <CardHeader>
         <CardTitle>Live fleet events</CardTitle>
       </CardHeader>
-      <CardBody style={{ height: "100%", overflowY: "auto" }}>
+      <CardBody className="showcase-events-body">
         {events.length === 0 ? (
-          <em>no events yet</em>
+          <span className="showcase-event-kind" style={{ padding: "8px 16px" }}>no events yet</span>
         ) : (
-          <div>
-            {collapsed.map((evt) => (
-              <div key={evt.key} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
-                <Label color={topicColor(evt.topic)} isCompact>
-                  {evt.topic}
-                </Label>
-                <span style={{ fontFamily: "monospace", fontSize: 12 }}>{evt.kind}</span>
-                {evt.count > 1 ? (
-                  <Badge isRead>{evt.count}</Badge>
-                ) : null}
-              </div>
-            ))}
-          </div>
+          collapsed.map((evt) => (
+            <div key={evt.key} className="showcase-event-row">
+              <div className={`showcase-event-dot showcase-event-dot--${topicDotColor(evt.topic)}`} />
+              <span className="showcase-event-kind">{evt.kind}</span>
+              {evt.count > 1 ? (
+                <span className="showcase-event-count">{evt.count}</span>
+              ) : null}
+            </div>
+          ))
         )}
       </CardBody>
     </Card>
   );
 }
 
-function topicColor(topic: string): "blue" | "green" | "orange" | "purple" | "red" | "grey" {
+function topicDotColor(topic: string): string {
   if (topic === "fleet.events") return "blue";
   if (topic === "fleet.missions") return "green";
   if (topic === "fleet.ops.events") return "orange";

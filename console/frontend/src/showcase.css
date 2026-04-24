@@ -1,0 +1,265 @@
+/* This project was developed with assistance from AI tools. */
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --pf-t--global--font--family--body: 'Inter', var(--pf-t--global--font--family--sans-serif);
+  --pf-t--global--font--family--heading: 'Public Sans', var(--pf-t--global--font--family--sans-serif);
+
+  --showcase--color--charcoal: #151515;
+  --showcase--color--red: #EE0000;
+  --showcase--color--red-dark: #A30000;
+  --showcase--color--gray-medium: #6A6E73;
+  --showcase--color--gray-light: #F0F0F0;
+  --showcase--color--border: #E0E0E0;
+  --showcase--color--card-bg: #F3F3F3;
+}
+
+/* Masthead: dark charcoal */
+.pf-v6-c-masthead {
+  --pf-v6-c-masthead--BackgroundColor: var(--showcase--color--charcoal);
+  border-bottom: none;
+  height: 56px;
+  min-height: 56px;
+}
+
+.pf-v6-c-masthead .pf-v6-c-masthead__brand {
+  font-family: 'Public Sans', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+/* Toggle group on dark masthead: pill style */
+.pf-v6-c-masthead .pf-v6-c-toggle-group {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  padding: 2px;
+}
+
+.pf-v6-c-masthead .pf-v6-c-toggle-group__button {
+  --pf-v6-c-toggle-group__button--BackgroundColor: transparent;
+  --pf-v6-c-toggle-group__button--Color: rgba(255, 255, 255, 0.8);
+  --pf-v6-c-toggle-group__button--hover--BackgroundColor: rgba(255, 255, 255, 0.1);
+  --pf-v6-c-toggle-group__button--m-selected--BackgroundColor: var(--showcase--color--red);
+  --pf-v6-c-toggle-group__button--m-selected--Color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  border: none;
+}
+
+.pf-v6-c-masthead .pf-v6-c-toggle-group__button::before {
+  border: none !important;
+}
+
+.pf-v6-c-masthead .pf-v6-c-toggle-group__button::after {
+  border: none !important;
+}
+
+.pf-v6-c-masthead .pf-v6-c-toggle-group__item + .pf-v6-c-toggle-group__item {
+  margin-inline-start: 0;
+}
+
+/* Page background */
+.pf-v6-c-page {
+  --pf-v6-c-page--BackgroundColor: #ffffff;
+}
+
+.pf-v6-c-page__main-section {
+  --pf-v6-c-page__main-section--BackgroundColor: #ffffff;
+}
+
+/* Cards: flat, light gray bg, thin border, no shadow */
+.pf-v6-c-card {
+  --pf-v6-c-card--BackgroundColor: var(--showcase--color--card-bg);
+  --pf-v6-c-card--BorderRadius: 4px;
+  box-shadow: none;
+  border: 1px solid var(--showcase--color--border);
+}
+
+.pf-v6-c-card__header {
+  border-bottom: 1px solid var(--showcase--color--border);
+  padding: 8px 16px;
+}
+
+.pf-v6-c-card__title-text,
+.pf-v6-c-card__header .pf-v6-c-card__title {
+  font-family: 'Public Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--showcase--color--charcoal);
+}
+
+.pf-v6-c-card__body {
+  padding: 16px;
+}
+
+/* Buttons */
+.pf-v6-c-button.pf-m-primary {
+  --pf-v6-c-button--m-primary--BackgroundColor: var(--showcase--color--red);
+  --pf-v6-c-button--m-primary--hover--BackgroundColor: #cc0000;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.pf-v6-c-button.pf-m-danger {
+  --pf-v6-c-button--m-danger--BackgroundColor: var(--showcase--color--red-dark);
+  --pf-v6-c-button--m-danger--hover--BackgroundColor: #8a0000;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.pf-v6-c-button.pf-m-secondary {
+  --pf-v6-c-button--m-secondary--Color: var(--showcase--color--charcoal);
+  --pf-v6-c-button--m-secondary--after--BorderColor: var(--showcase--color--gray-medium);
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.pf-v6-c-button.pf-m-tertiary {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  border-radius: 4px;
+  color: var(--showcase--color--gray-medium);
+  border: 1px solid var(--showcase--color--gray-medium);
+  background: transparent;
+}
+
+.pf-v6-c-button.pf-m-tertiary:hover {
+  background: var(--showcase--color--gray-light);
+}
+
+/* Event rows */
+.showcase-event-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--showcase--color--border);
+  cursor: default;
+  transition: background-color 0.1s;
+}
+
+.showcase-event-row:last-child {
+  border-bottom: none;
+}
+
+.showcase-event-row:hover {
+  background: #ffffff;
+}
+
+.showcase-event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.showcase-event-dot--blue { background: #0066CC; }
+.showcase-event-dot--green { background: #3E8635; }
+.showcase-event-dot--purple { background: #6753AC; }
+.showcase-event-dot--red { background: #A30000; }
+.showcase-event-dot--orange { background: #F0AB00; }
+.showcase-event-dot--grey { background: #8A8D90; }
+
+.showcase-event-kind {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--showcase--color--gray-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.showcase-event-count {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--showcase--color--gray-medium);
+  background: var(--showcase--color--border);
+  border-radius: 9999px;
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Topology: cluster panels */
+.showcase-cluster {
+  padding: 12px 0;
+}
+
+.showcase-cluster-title {
+  font-family: 'Public Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--showcase--color--charcoal);
+  padding-left: 12px;
+  margin-bottom: 6px;
+}
+
+.showcase-cluster--hub .showcase-cluster-title {
+  border-left: 3px solid var(--showcase--color--red);
+}
+
+.showcase-cluster--companion .showcase-cluster-title {
+  border-left: 3px solid #0066CC;
+}
+
+.showcase-cluster-workloads {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 15px;
+}
+
+.showcase-cluster-workloads li {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--showcase--color--gray-medium);
+  line-height: 22px;
+}
+
+/* Camera feed: flush image */
+.showcase-camera-body {
+  padding: 0 !important;
+  position: relative;
+}
+
+.showcase-camera-body img {
+  width: 100%;
+  display: block;
+  border-radius: 0 0 3px 3px;
+}
+
+/* Stage: dark background */
+.showcase-stage-viewport {
+  background: var(--showcase--color--charcoal);
+  border-radius: 0 0 3px 3px;
+  overflow: hidden;
+}
+
+.showcase-stage-body {
+  padding: 0 !important;
+}
+
+/* Card body flush (no padding variant) */
+.showcase-card-body-flush {
+  padding: 0 !important;
+}
+
+/* Events card body */
+.showcase-events-body {
+  padding: 4px 0 !important;
+  overflow-y: auto;
+}
