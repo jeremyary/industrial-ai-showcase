@@ -123,12 +123,9 @@ export function App(){
         <Flex spaceItems={{ default: "spaceItemsLg" }} alignItems={{ default: "alignItemsStretch" }}>
           <FlexItem
             flex={{ default: "flex_1" }}
-            style={{ maxWidth: 380, minWidth: 280, alignSelf: "stretch" }}
+            style={{ maxWidth: 320, minWidth: 260, alignSelf: "stretch" }}
           >
             <Stack hasGutter style={{ height: "100%" }}>
-              <StackItem>
-                <TopologyCard topology={topology} connected={connected} />
-              </StackItem>
               <StackItem>
                 <ScenarioPanel
                   scenario={scenario}
@@ -145,7 +142,21 @@ export function App(){
             </Stack>
           </FlexItem>
           <FlexItem flex={{ default: "flex_4" }}>
-            <StageCard />
+            <Stack hasGutter style={{ height: "100%" }}>
+              <StackItem>
+                <Flex spaceItems={{ default: "spaceItemsLg" }} alignItems={{ default: "alignItemsStretch" }}>
+                  <FlexItem flex={{ default: "flex_1" }}>
+                    <TopologyCard topology={topology} connected={connected} />
+                  </FlexItem>
+                  <FlexItem style={{ width: 220, flexShrink: 0 }}>
+                    <CameraFeedCard cameraState={cameraState} />
+                  </FlexItem>
+                </Flex>
+              </StackItem>
+              <StackItem isFilled>
+                <StageCard />
+              </StackItem>
+            </Stack>
           </FlexItem>
         </Flex>
       </PageSection>
@@ -282,6 +293,26 @@ function ClusterPanel({ title, workloads }: { title: string; workloads: string[]
         ))}
       </ul>
     </div>
+  );
+}
+
+function CameraFeedCard({ cameraState }: { cameraState: string | null }){
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    setTick((t) => t + 1);
+  }, [cameraState]);
+
+  return (
+    <Card isFullHeight>
+      <CardHeader><CardTitle>Camera feed</CardTitle></CardHeader>
+      <CardBody style={{ padding: 0 }}>
+        <img
+          src={`/api/camera/frame?t=${tick}`}
+          alt={`Camera: ${cameraState ?? "unknown"}`}
+          style={{ width: "100%", display: "block", borderRadius: "0 0 3px 3px" }}
+        />
+      </CardBody>
+    </Card>
   );
 }
 

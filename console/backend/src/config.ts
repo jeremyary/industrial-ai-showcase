@@ -25,7 +25,7 @@ export function loadConfig(): AppConfig {
     kafkaConsumerGroup:
       process.env.KAFKA_CONSUMER_GROUP ?? "showcase-console",
     kafkaTopics:
-      (process.env.KAFKA_TOPICS ?? "fleet.events,fleet.missions,fleet.ops.events,fleet.telemetry,fleet.safety.alerts").split(","),
+      (process.env.KAFKA_TOPICS ?? "fleet.events,fleet.missions,fleet.ops.events,fleet.telemetry,fleet.safety.alerts,warehouse.cameras.aisle3").split(","),
     wmsStubBaseUrl:
       process.env.WMS_STUB_BASE_URL ?? "http://wms-stub.fleet-ops.svc.cluster.local:8082",
     mjpegUrl: process.env.MJPEG_URL ?? "",

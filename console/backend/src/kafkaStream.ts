@@ -23,6 +23,7 @@ export class FleetStream extends EventEmitter {
   private diagMsgCount = 0;
   private diagLastReportTs = Date.now();
   private readonly DIAG_INTERVAL_MS = 30_000;
+  private latestCameraFrame: Buffer | null = null;
 
   constructor(
     bootstrapServers: string,
@@ -89,6 +90,13 @@ export class FleetStream extends EventEmitter {
             );
             this.diagLastReportTs = now;
           }
+          if (msg.topic.startsWith("warehouse.cameras.") && msg.payload && typeof msg.payload === "object") {
+            const p = msg.payload as Record<string, unknown>;
+            if (typeof p["frame_b64"] === "string") {
+              this.latestCameraFrame = Buffer.from(p["frame_b64"] as string, "base64");
+              delete p["frame_b64"];
+            }
+          }
           this.emit("message", msg);
         } catch (err) {
           this.log.error({ err: (err as Error).message, topic: payload.topic }, "fleet-stream.each-error");
@@ -115,6 +123,10 @@ export class FleetStream extends EventEmitter {
       key: payload.message.key?.toString("utf-8") ?? null,
       payload: parsed,
     };
+  }
+
+  getCameraFrame(): Buffer | null {
+    return this.latestCameraFrame;
   }
 
   async stop(): Promise<void> {

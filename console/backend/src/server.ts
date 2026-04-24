@@ -74,6 +74,19 @@ fastify.post<{ Params: { action: string }; Body: Record<string, unknown> }>(
 
 registerStreamRoutes(fastify, config);
 
+fastify.get("/api/camera/frame", async (_request, reply) => {
+  const frame = stream.getCameraFrame();
+  if (!frame) {
+    reply.code(503).send({ error: "no camera frame available" });
+    return reply;
+  }
+  reply
+    .header("Content-Type", "image/jpeg")
+    .header("Cache-Control", "no-cache, no-store")
+    .send(frame);
+  return reply;
+});
+
 fastify.get("/api/events", async (_request, reply) => {
   reply.raw.setHeader("Content-Type", "text/event-stream");
   reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
