@@ -95,8 +95,8 @@ export function MjpegCanvas({ src, style, onFirstFrame }: MjpegCanvasProps): Rea
 
     if (Hls.isSupported()) {
       const hls = new Hls({
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 5,
+        liveSyncDurationCount: 1,
+        liveMaxLatencyDurationCount: 3,
         liveDurationInfinity: true,
         lowLatencyMode: false,
         enableWorker: true,
@@ -143,14 +143,14 @@ export function MjpegCanvas({ src, style, onFirstFrame }: MjpegCanvasProps): Rea
 
         const latency = hls.latency;
         if (latency == null) return;
-        const target = hls.targetLatency ?? 6;
-        if (latency < target - 2 && video.playbackRate >= 1) {
+        const target = hls.targetLatency ?? 2;
+        if (latency < target * 0.5 && video.playbackRate >= 1) {
           video.playbackRate = 0.95;
           logDiag("RATE_ADJUST slow", { latency: latency.toFixed(2), target: target.toFixed(2), rate: 0.95 });
-        } else if (latency > target + 2 && video.playbackRate <= 1) {
+        } else if (latency > target * 2 && video.playbackRate <= 1) {
           video.playbackRate = 1.05;
           logDiag("RATE_ADJUST fast", { latency: latency.toFixed(2), target: target.toFixed(2), rate: 1.05 });
-        } else if (latency >= target - 1 && latency <= target + 1 && video.playbackRate !== 1) {
+        } else if (latency >= target * 0.75 && latency <= target * 1.5 && video.playbackRate !== 1) {
           video.playbackRate = 1;
           logDiag("RATE_ADJUST normal", { latency: latency.toFixed(2), target: target.toFixed(2), rate: 1 });
         }
