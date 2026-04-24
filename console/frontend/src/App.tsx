@@ -64,7 +64,9 @@ export function App(){
         return;
       }
 
-      setEvents((prev) => [msg, ...prev].slice(0, MAX_EVENTS));
+      if (extractKind(msg)) {
+        setEvents((prev) => [msg, ...prev].slice(0, MAX_EVENTS));
+      }
     });
     return unsubscribe;
   }, []);
@@ -353,9 +355,21 @@ function topicColor(topic: string): "blue" | "green" | "orange" | "purple" | "re
 function extractKind(m: FleetMessage): string {
   if (m.payload && typeof m.payload === "object") {
     const p = m.payload as Record<string, unknown>;
+
+    if (typeof p["event_class"] === "string") {
+      const ec = p["event_class"] as string;
+      if (ec === "vla.call.failed") return "";
+      if (ec === "vla.call.started") return "querying VLA";
+      return ec;
+    }
+
     if (typeof p["kind"] === "string") return p["kind"] as string;
-    if (typeof p["event_class"] === "string") return p["event_class"] as string;
     if (typeof p["alert_type"] === "string") return p["alert_type"] as string;
+
+    if (m.topic === "fleet.safety.alerts") {
+      return p["obstructed"] === true ? "obstruction" : "clear";
+    }
+
     if (typeof p["robot_id"] === "string") return p["robot_id"] as string;
   }
   return "(payload)";
