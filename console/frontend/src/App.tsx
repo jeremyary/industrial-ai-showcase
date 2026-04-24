@@ -56,7 +56,8 @@ export function App(){
       setEvents((prev) => [msg, ...prev].slice(0, MAX_EVENTS));
 
       if (msg.topic === "fleet.safety.alerts" && msg.payload && typeof msg.payload === "object") {
-        setAlertActive(true);
+        const p = msg.payload as Record<string, unknown>;
+        setAlertActive(p["obstructed"] === true);
       }
 
       if (
@@ -85,7 +86,6 @@ export function App(){
         setCameraState("obstructed");
       } else if (btn.action === "clear-pallet" || btn.action === "reset-scene") {
         setCameraState("empty");
-        setAlertActive(false);
       }
     } catch (e) {
       setLastResult(`${btn.label}: ${e instanceof Error ? e.message : "failed"}`);
