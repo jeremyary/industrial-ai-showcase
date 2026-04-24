@@ -1,5 +1,5 @@
 // This project was developed with assistance from AI tools.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Badge,
   Button,
@@ -53,7 +53,6 @@ export function App(){
   useEffect(() => {
     const unsubscribe = subscribeEvents((msg) => {
       setConnected(true);
-      setEvents((prev) => [msg, ...prev].slice(0, MAX_EVENTS));
 
       if (msg.topic === "fleet.safety.alerts" && msg.payload && typeof msg.payload === "object") {
         const p = msg.payload as Record<string, unknown>;
@@ -67,7 +66,10 @@ export function App(){
         "state" in msg.payload
       ) {
         setCameraState(String((msg.payload as Record<string, unknown>).state));
+        return;
       }
+
+      setEvents((prev) => [msg, ...prev].slice(0, MAX_EVENTS));
     });
     return unsubscribe;
   }, []);
@@ -316,7 +318,29 @@ function CameraFeedCard({ cameraState }: { cameraState: string | null }){
   );
 }
 
+interface CollapsedEvent {
+  topic: string;
+  kind: string;
+  count: number;
+  key: string;
+}
+
+function collapseEvents(events: FleetMessage[]): CollapsedEvent[] {
+  const result: CollapsedEvent[] = [];
+  for (const m of events) {
+    const kind = extractKind(m);
+    const prev = result[result.length - 1];
+    if (prev && prev.topic === m.topic && prev.kind === kind) {
+      prev.count++;
+    } else {
+      result.push({ topic: m.topic, kind, count: 1, key: `${m.topic}-${m.partition}-${m.offset}` });
+    }
+  }
+  return result;
+}
+
 function EventsCard({ events }: { events: FleetMessage[] }){
+  const collapsed = useMemo(() => collapseEvents(events), [events]);
   return (
     <Card>
       <CardHeader>
@@ -327,12 +351,15 @@ function EventsCard({ events }: { events: FleetMessage[] }){
           <em>no events yet</em>
         ) : (
           <div>
-            {events.map((m) => (
-              <div key={`${m.topic}-${m.partition}-${m.offset}`} style={{ display: "flex", gap: 8, alignItems: "baseline", marginBottom: 4 }}>
-                <Label color={topicColor(m.topic)} isCompact>
-                  {m.topic}
+            {collapsed.map((evt) => (
+              <div key={evt.key} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                <Label color={topicColor(evt.topic)} isCompact>
+                  {evt.topic}
                 </Label>
-                <span style={{ fontFamily: "monospace", fontSize: 12 }}>{extractKind(m)}</span>
+                <span style={{ fontFamily: "monospace", fontSize: 12 }}>{evt.kind}</span>
+                {evt.count > 1 ? (
+                  <Badge isRead>{evt.count}</Badge>
+                ) : null}
               </div>
             ))}
           </div>
