@@ -254,7 +254,7 @@ function TopologyCard(){
 function CameraFeedCard({ cameraTick }: { cameraTick: number }){
   return (
     <Card isFullHeight>
-      <CardHeader><CardTitle>Camera Reasoning</CardTitle></CardHeader>
+      <CardHeader><CardTitle>On-Site Camera Reasoning</CardTitle></CardHeader>
       <CardBody className="showcase-camera-body">
         <img
           src={`/api/camera/frame?t=${cameraTick}`}

@@ -58,7 +58,7 @@ export function StageCard(): React.ReactElement {
     <Card isFullHeight>
       <CardHeader>
         <Flex alignItems={{ default: "alignItemsCenter" }}>
-          <FlexItem><CardTitle>Digital Twin</CardTitle></FlexItem>
+          <FlexItem><CardTitle>Digital Twin on Hub Cluster</CardTitle></FlexItem>
           <FlexItem align={{ default: "alignRight" }}>
             <Button
               variant="plain"
