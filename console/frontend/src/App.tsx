@@ -25,6 +25,7 @@ import {
 import type { AudienceMode, ButtonDef, FleetMessage, ScenarioDetail, Topology } from "./types.js";
 import { executeAction, fetchScenarioDetail, fetchScenarios, fetchTopology, subscribeEvents } from "./api.js";
 import { StageCard } from "./Stage.js";
+import topologyImg from "./topology.png";
 
 const MAX_EVENTS = 200;
 
@@ -146,7 +147,7 @@ export function App(){
               <StackItem>
                 <Flex spaceItems={{ default: "spaceItemsLg" }} alignItems={{ default: "alignItemsStretch" }}>
                   <FlexItem flex={{ default: "flex_1" }}>
-                    <TopologyCard topology={topology} connected={connected} />
+                    <TopologyCard />
                   </FlexItem>
                   <FlexItem style={{ width: 458, flexShrink: 0 }}>
                     <CameraFeedCard cameraTick={cameraTick} />
@@ -233,39 +234,18 @@ function ScenarioPanel({
   );
 }
 
-function TopologyCard({ topology, connected }: { topology: Topology | null; connected: boolean }){
+function TopologyCard(){
   return (
     <Card isFullHeight>
       <CardHeader>
         <CardTitle>Topology</CardTitle>
       </CardHeader>
-      <CardBody>
-        {topology === null ? (
-          <Spinner size="md" />
-        ) : (
-          <Flex spaceItems={{ default: "spaceItemsLg" }}>
-            <FlexItem flex={{ default: "flex_1" }}>
-              <div className="showcase-cluster showcase-cluster--hub">
-                <div className="showcase-cluster-title">{topology.hub.name}</div>
-                <ul className="showcase-cluster-workloads">
-                  {topology.hub.workloads.map((w) => (
-                    <li key={w}>{w}</li>
-                  ))}
-                </ul>
-              </div>
-            </FlexItem>
-            <FlexItem flex={{ default: "flex_1" }}>
-              <div className="showcase-cluster showcase-cluster--companion">
-                <div className="showcase-cluster-title">{topology.companion.name}</div>
-                <ul className="showcase-cluster-workloads">
-                  {topology.companion.workloads.map((w) => (
-                    <li key={w}>{w}</li>
-                  ))}
-                </ul>
-              </div>
-            </FlexItem>
-          </Flex>
-        )}
+      <CardBody style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <img
+          src={topologyImg}
+          alt="System topology"
+          style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+        />
       </CardBody>
     </Card>
   );
