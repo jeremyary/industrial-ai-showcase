@@ -94,8 +94,8 @@ export class FleetStream extends EventEmitter {
             const p = msg.payload as Record<string, unknown>;
             if (typeof p["frame_b64"] === "string") {
               this.latestCameraFrame = Buffer.from(p["frame_b64"] as string, "base64");
-              delete p["frame_b64"];
             }
+            return;
           }
           this.emit("message", msg);
         } catch (err) {
