@@ -101,6 +101,7 @@ def _start_ffmpeg() -> None:
     w, h = RESOLUTION
     cmd = [
         FFMPEG_PATH, "-y",
+        "-use_wallclock_as_timestamps", "1",
         "-f", "rawvideo",
         "-pixel_format", "rgba",
         "-video_size", f"{w}x{h}",

@@ -141,14 +141,18 @@ export function MjpegCanvas({ src, style, onFirstFrame }: MjpegCanvasProps): Rea
           });
         }
 
-        const syncPos = hls.liveSyncPosition;
-        if (syncPos != null && syncPos > 0 && video.currentTime > syncPos + 2) {
-          logDiag("NUDGE_BACK", {
-            from: video.currentTime.toFixed(2),
-            to: syncPos.toFixed(2),
-            overshoot: (video.currentTime - syncPos).toFixed(2),
-          });
-          video.currentTime = syncPos;
+        const latency = hls.latency;
+        if (latency == null) return;
+        const target = hls.targetLatency ?? 6;
+        if (latency < target - 2 && video.playbackRate >= 1) {
+          video.playbackRate = 0.95;
+          logDiag("RATE_ADJUST slow", { latency: latency.toFixed(2), target: target.toFixed(2), rate: 0.95 });
+        } else if (latency > target + 2 && video.playbackRate <= 1) {
+          video.playbackRate = 1.05;
+          logDiag("RATE_ADJUST fast", { latency: latency.toFixed(2), target: target.toFixed(2), rate: 1.05 });
+        } else if (latency >= target - 1 && latency <= target + 1 && video.playbackRate !== 1) {
+          video.playbackRate = 1;
+          logDiag("RATE_ADJUST normal", { latency: latency.toFixed(2), target: target.toFixed(2), rate: 1 });
         }
       });
 
