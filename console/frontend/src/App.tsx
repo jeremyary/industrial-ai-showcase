@@ -356,14 +356,14 @@ function extractKind(m: FleetMessage): string {
   if (m.payload && typeof m.payload === "object") {
     const p = m.payload as Record<string, unknown>;
 
-    if (typeof p["event_class"] === "string") {
-      const ec = p["event_class"] as string;
-      if (ec === "vla.call.failed") return "";
-      if (ec === "vla.call.started") return "querying VLA";
-      return ec;
+    if (typeof p["kind"] === "string") {
+      const k = p["kind"] as string;
+      if (k === "vla.call.failed") return "";
+      if (k === "vla.call.started") return "querying VLA";
+      return k;
     }
 
-    if (typeof p["kind"] === "string") return p["kind"] as string;
+    if (typeof p["event_class"] === "string") return p["event_class"] as string;
     if (typeof p["alert_type"] === "string") return p["alert_type"] as string;
 
     if (m.topic === "fleet.safety.alerts") {
