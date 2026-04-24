@@ -36,7 +36,7 @@ export function App(){
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [events, setEvents] = useState<FleetMessage[]>([]);
   const [connected, setConnected] = useState(false);
-  const [cameraState, setCameraState] = useState<string | null>(null);
+  const [cameraTick, setCameraTick] = useState(0);
   const [alertActive, setAlertActive] = useState(false);
 
   useEffect(() => {
@@ -59,13 +59,8 @@ export function App(){
         setAlertActive(p["obstructed"] === true);
       }
 
-      if (
-        msg.topic?.startsWith("warehouse.cameras.") &&
-        msg.payload &&
-        typeof msg.payload === "object" &&
-        "state" in msg.payload
-      ) {
-        setCameraState(String((msg.payload as Record<string, unknown>).state));
+      if (msg.topic?.startsWith("warehouse.cameras.")) {
+        setCameraTick((t) => t + 1);
         return;
       }
 
@@ -83,12 +78,6 @@ export function App(){
         ? `${btn.label}: ${result.status} (${String(result.trace_id).slice(0, 8)})`
         : `${btn.label}: ${result.status ?? "ok"}`;
       setLastResult(summary);
-
-      if (btn.action === "drop-pallet") {
-        setCameraState("obstructed");
-      } else if (btn.action === "clear-pallet" || btn.action === "reset-scene") {
-        setCameraState("empty");
-      }
     } catch (e) {
       setLastResult(`${btn.label}: ${e instanceof Error ? e.message : "failed"}`);
     } finally {
@@ -150,7 +139,7 @@ export function App(){
                     <TopologyCard topology={topology} connected={connected} />
                   </FlexItem>
                   <FlexItem style={{ width: 458, flexShrink: 0 }}>
-                    <CameraFeedCard cameraState={cameraState} />
+                    <CameraFeedCard cameraTick={cameraTick} />
                   </FlexItem>
                 </Flex>
               </StackItem>
@@ -286,19 +275,14 @@ function ClusterPanel({ title, workloads }: { title: string; workloads: string[]
   );
 }
 
-function CameraFeedCard({ cameraState }: { cameraState: string | null }){
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    setTick((t) => t + 1);
-  }, [cameraState]);
-
+function CameraFeedCard({ cameraTick }: { cameraTick: number }){
   return (
     <Card isFullHeight>
       <CardHeader><CardTitle>Camera feed</CardTitle></CardHeader>
       <CardBody style={{ padding: 0 }}>
         <img
-          src={`/api/camera/frame?t=${tick}`}
-          alt={`Camera: ${cameraState ?? "unknown"}`}
+          src={`/api/camera/frame?t=${cameraTick}`}
+          alt="Camera feed"
           style={{ width: "100%", display: "block", borderRadius: "0 0 3px 3px" }}
         />
       </CardBody>
