@@ -432,6 +432,31 @@ def _reset_scene() -> None:
 # Startup
 # ---------------------------------------------------------------------------
 
+def _reset_camera_state() -> None:
+    """Publish CameraCommand(empty) so fake-camera matches the clean scene."""
+    try:
+        from confluent_kafka import Producer
+    except ImportError:
+        print("[warehouse_baseline] confluent_kafka unavailable — skipping camera reset", flush=True)
+        return
+    conf = {"bootstrap.servers": KAFKA_BOOTSTRAP}
+    if KAFKA_SECURITY_PROTOCOL != "PLAINTEXT":
+        conf["security.protocol"] = KAFKA_SECURITY_PROTOCOL
+        conf["ssl.endpoint.identification.algorithm"] = "none"
+        conf["enable.ssl.certificate.verification"] = "false"
+    p = Producer(conf)
+    import json as _json
+    cmd = _json.dumps({
+        "command_id": uuid.uuid4().hex,
+        "trace_id": uuid.uuid4().hex,
+        "camera_id": "cam-aisle-3",
+        "state": "empty",
+    })
+    p.produce("warehouse.cameras.commands", key="cam-aisle-3", value=cmd.encode())
+    p.flush(timeout=5.0)
+    print("[warehouse_baseline] camera reset to empty", flush=True)
+
+
 async def _run() -> None:
     try:
         print("[warehouse_baseline] _run() starting", flush=True)
@@ -440,6 +465,7 @@ async def _run() -> None:
         print("[warehouse_baseline] scene opened successfully", flush=True)
 
         _capture_original_xforms()
+        _reset_camera_state()
 
         threading.Thread(target=_telemetry_consumer, daemon=True, name="twin-telemetry").start()
         threading.Thread(target=_alerts_consumer, daemon=True, name="twin-alerts").start()
