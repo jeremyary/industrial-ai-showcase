@@ -73,8 +73,8 @@ export function StageCard(): React.ReactElement {
         <div
           ref={stageFrameRef}
           style={{
-            height: isFullscreen ? "100vh" : "min(70vh, 900px)",
-            minHeight: 400,
+            height: isFullscreen ? "100vh" : undefined,
+            aspectRatio: isFullscreen ? undefined : "16 / 9",
             background: "linear-gradient(135deg, #1e1e1e, #3a3a3a)",
             color: "#ddd",
             display: "flex",
