@@ -133,7 +133,6 @@ export function App(){
                   scenario={scenario}
                   actionBusy={actionBusy}
                   lastResult={lastResult}
-                  cameraState={cameraState}
                   alertActive={alertActive}
                   onAction={onAction}
                 />
@@ -182,14 +181,12 @@ function ScenarioPanel({
   scenario,
   actionBusy,
   lastResult,
-  cameraState,
   alertActive,
   onAction,
 }: {
   scenario: ScenarioDetail | null;
   actionBusy: string | null;
   lastResult: string | null;
-  cameraState: string | null;
   alertActive: boolean;
   onAction: (btn: ButtonDef) => void;
 }){
@@ -231,20 +228,11 @@ function ScenarioPanel({
               ))}
             </Flex>
           </StackItem>
-          <StackItem>
-            <Flex spaceItems={{ default: "spaceItemsSm" }}>
-              <FlexItem>
-                <Label color={cameraState === "obstructed" ? "orange" : "green"} isCompact>
-                  camera: {cameraState ?? "unknown"}
-                </Label>
-              </FlexItem>
-              {alertActive ? (
-                <FlexItem>
-                  <Label color="red" isCompact>obstruction detected</Label>
-                </FlexItem>
-              ) : null}
-            </Flex>
-          </StackItem>
+          {alertActive ? (
+            <StackItem>
+              <Label color="red" isCompact>obstruction detected</Label>
+            </StackItem>
+          ) : null}
           {lastResult ? (
             <StackItem>
               <Label color="blue" style={{ maxWidth: "100%" }}>{lastResult}</Label>
