@@ -148,7 +148,7 @@ export function App(){
                   <FlexItem flex={{ default: "flex_1" }}>
                     <TopologyCard topology={topology} connected={connected} />
                   </FlexItem>
-                  <FlexItem style={{ width: 340, flexShrink: 0 }}>
+                  <FlexItem style={{ width: 458, flexShrink: 0 }}>
                     <CameraFeedCard cameraState={cameraState} />
                   </FlexItem>
                 </Flex>
