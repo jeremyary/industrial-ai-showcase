@@ -52,11 +52,16 @@ export function App(){
 
   useEffect(() => {
     const unsubscribe = subscribeEvents((msg) => {
-      setConnected(true);
+      setConnected((prev) => {
+        if (!prev) console.log("[console] events stream: live");
+        return true;
+      });
 
       if (msg.topic === "fleet.safety.alerts" && msg.payload && typeof msg.payload === "object") {
         const p = msg.payload as Record<string, unknown>;
-        setAlertActive(p["obstructed"] === true);
+        const obstructed = p["obstructed"] === true;
+        console.log("[console] safety alert:", obstructed ? "obstruction detected" : "clear");
+        setAlertActive(obstructed);
       }
 
       if (msg.topic?.startsWith("warehouse.cameras.")) {
@@ -79,9 +84,12 @@ export function App(){
       const summary = result.trace_id
         ? `${btn.label}: ${result.status} (${String(result.trace_id).slice(0, 8)})`
         : `${btn.label}: ${result.status ?? "ok"}`;
+      console.log("[console] action result:", summary);
       setLastResult(summary);
     } catch (e) {
-      setLastResult(`${btn.label}: ${e instanceof Error ? e.message : "failed"}`);
+      const err = `${btn.label}: ${e instanceof Error ? e.message : "failed"}`;
+      console.log("[console] action error:", err);
+      setLastResult(err);
     } finally {
       setActionBusy(null);
     }
@@ -219,16 +227,6 @@ function ScenarioPanel({
               ))}
             </Flex>
           </StackItem>
-          {alertActive ? (
-            <StackItem>
-              <Label color="red" isCompact>obstruction detected</Label>
-            </StackItem>
-          ) : null}
-          {lastResult ? (
-            <StackItem>
-              <Label color="blue" style={{ maxWidth: "100%" }}>{lastResult}</Label>
-            </StackItem>
-          ) : null}
         </Stack>
       </CardBody>
     </Card>
@@ -251,11 +249,6 @@ function TopologyCard({ topology, connected }: { topology: Topology | null; conn
             </StackItem>
             <StackItem>
               <ClusterPanel title={topology.companion.name} workloads={topology.companion.workloads} />
-            </StackItem>
-            <StackItem>
-              <Label color={connected ? "green" : "grey"}>
-                events stream: {connected ? "live" : "waiting..."}
-              </Label>
             </StackItem>
           </Stack>
         )}
