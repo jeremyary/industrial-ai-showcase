@@ -16,8 +16,9 @@
 
 /* Masthead: dark charcoal */
 .pf-v6-c-masthead {
-  --pf-v6-c-masthead--BackgroundColor: var(--showcase--color--charcoal);
-  border-bottom: none;
+  --pf-v6-c-masthead--BackgroundColor: var(--showcase--color--charcoal) !important;
+  background-color: var(--showcase--color--charcoal) !important;
+  border-bottom: none !important;
   height: 56px;
   min-height: 56px;
 }
@@ -31,24 +32,35 @@
   color: #fff;
 }
 
+.pf-v6-c-masthead .pf-v6-c-masthead__content {
+  display: flex !important;
+  justify-content: flex-end !important;
+}
+
 /* Toggle group on dark masthead: pill style */
 .pf-v6-c-masthead .pf-v6-c-toggle-group {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 9999px;
-  padding: 2px;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 9999px !important;
+  padding: 2px !important;
 }
 
 .pf-v6-c-masthead .pf-v6-c-toggle-group__button {
-  --pf-v6-c-toggle-group__button--BackgroundColor: transparent;
-  --pf-v6-c-toggle-group__button--Color: rgba(255, 255, 255, 0.8);
-  --pf-v6-c-toggle-group__button--hover--BackgroundColor: rgba(255, 255, 255, 0.1);
-  --pf-v6-c-toggle-group__button--m-selected--BackgroundColor: var(--showcase--color--red);
-  --pf-v6-c-toggle-group__button--m-selected--Color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 12px;
-  border-radius: 9999px;
-  border: none;
+  background-color: transparent !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 4px 12px !important;
+  border-radius: 9999px !important;
+  border: none !important;
+}
+
+.pf-v6-c-masthead .pf-v6-c-toggle-group__button:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.pf-v6-c-masthead .pf-v6-c-toggle-group__button.pf-m-selected {
+  background-color: var(--showcase--color--red) !important;
+  color: #fff !important;
 }
 
 .pf-v6-c-masthead .pf-v6-c-toggle-group__button::before {

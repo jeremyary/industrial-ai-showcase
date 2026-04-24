@@ -9,6 +9,7 @@ import {
   CardTitle,
   Flex,
   FlexItem,
+  Label,
   Masthead,
   MastheadBrand,
   MastheadContent,
@@ -273,7 +274,7 @@ function TopologyCard({ topology, connected }: { topology: Topology | null; conn
 function CameraFeedCard({ cameraTick }: { cameraTick: number }){
   return (
     <Card isFullHeight>
-      <CardHeader><CardTitle>Camera feed</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Camera Reasoning</CardTitle></CardHeader>
       <CardBody className="showcase-camera-body">
         <img
           src={`/api/camera/frame?t=${cameraTick}`}
@@ -318,10 +319,10 @@ function EventsCard({ events }: { events: FleetMessage[] }){
         ) : (
           collapsed.map((evt) => (
             <div key={evt.key} className="showcase-event-row">
-              <div className={`showcase-event-dot showcase-event-dot--${topicDotColor(evt.topic)}`} />
+              <Label color={topicColor(evt.topic)} isCompact>{evt.topic}</Label>
               <span className="showcase-event-kind">{evt.kind}</span>
               {evt.count > 1 ? (
-                <span className="showcase-event-count">{evt.count}</span>
+                <Badge isRead>{evt.count}</Badge>
               ) : null}
             </div>
           ))
@@ -331,7 +332,7 @@ function EventsCard({ events }: { events: FleetMessage[] }){
   );
 }
 
-function topicDotColor(topic: string): string {
+function topicColor(topic: string): "blue" | "green" | "orange" | "purple" | "red" | "grey" {
   if (topic === "fleet.events") return "blue";
   if (topic === "fleet.missions") return "green";
   if (topic === "fleet.ops.events") return "orange";
