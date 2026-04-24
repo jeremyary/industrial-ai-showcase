@@ -1,5 +1,5 @@
 // This project was developed with assistance from AI tools.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Badge,
   Button,
@@ -286,7 +286,6 @@ function ClusterPanel({ title, workloads }: { title: string; workloads: string[]
 }
 
 function EventsCard({ events }: { events: FleetMessage[] }){
-  const grouped = useMemo(() => groupByTrace(events), [events]);
   return (
     <Card>
       <CardHeader>
@@ -296,58 +295,19 @@ function EventsCard({ events }: { events: FleetMessage[] }){
         {events.length === 0 ? (
           <em>no events yet</em>
         ) : (
-          <Stack hasGutter>
-            {grouped.map(({ traceId, messages }) => (
-              <StackItem key={traceId}>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>
-                      <code>{traceId}</code>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardBody>
-                    {messages.map((m) => (
-                      <EventLine key={`${m.topic}-${m.partition}-${m.offset}`} message={m} />
-                    ))}
-                  </CardBody>
-                </Card>
-              </StackItem>
+          <div>
+            {events.map((m) => (
+              <div key={`${m.topic}-${m.partition}-${m.offset}`} style={{ display: "flex", gap: 8, alignItems: "baseline", marginBottom: 4 }}>
+                <Label color={topicColor(m.topic)} isCompact>
+                  {m.topic}
+                </Label>
+                <span style={{ fontFamily: "monospace", fontSize: 12 }}>{extractKind(m)}</span>
+              </div>
             ))}
-          </Stack>
+          </div>
         )}
       </CardBody>
     </Card>
-  );
-}
-
-function groupByTrace(events: FleetMessage[]): { traceId: string; messages: FleetMessage[] }[] {
-  const byTrace = new Map<string, FleetMessage[]>();
-  for (const m of events) {
-    const traceId = extractTraceId(m) ?? "(no trace)";
-    const bucket = byTrace.get(traceId) ?? [];
-    bucket.push(m);
-    byTrace.set(traceId, bucket);
-  }
-  return Array.from(byTrace.entries()).map(([traceId, messages]) => ({ traceId, messages }));
-}
-
-function extractTraceId(m: FleetMessage): string | null {
-  if (m.payload && typeof m.payload === "object" && "trace_id" in m.payload) {
-    const t = (m.payload as Record<string, unknown>)["trace_id"];
-    return typeof t === "string" ? t : null;
-  }
-  return null;
-}
-
-function EventLine({ message }: { message: FleetMessage }){
-  const kind = extractKind(message);
-  return (
-    <div style={{ display: "flex", gap: 8, alignItems: "baseline", marginBottom: 4 }}>
-      <Label color={topicColor(message.topic)} isCompact>
-        {message.topic}
-      </Label>
-      <span style={{ fontFamily: "monospace", fontSize: 12 }}>{kind}</span>
-    </div>
   );
 }
 
@@ -366,7 +326,7 @@ function extractKind(m: FleetMessage): string {
     if (typeof p["kind"] === "string") return p["kind"] as string;
     if (typeof p["event_class"] === "string") return p["event_class"] as string;
     if (typeof p["alert_type"] === "string") return p["alert_type"] as string;
-    if (typeof p["robot_id"] === "string") return `telemetry ${p["robot_id"] as string}`;
+    if (typeof p["robot_id"] === "string") return p["robot_id"] as string;
   }
   return "(payload)";
 }
