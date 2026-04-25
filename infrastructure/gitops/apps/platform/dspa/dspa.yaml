@@ -34,5 +34,3 @@ spec:
         secretName: minio-credentials
         accessKey: AWS_ACCESS_KEY_ID
         secretKey: AWS_SECRET_ACCESS_KEY
-  mlpipelineUI:
-    deploy: true
