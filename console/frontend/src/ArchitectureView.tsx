@@ -91,7 +91,7 @@ export function ArchitectureView() {
                     </div>
                     <Flex
                       spaceItems={{ default: "spaceItemsSm" }}
-                      wrap={{ default: "wrap" }}
+                      flexWrap={{ default: "wrap" }}
                     >
                       {level.components.map((c) => (
                         <FlexItem key={c.name}>
