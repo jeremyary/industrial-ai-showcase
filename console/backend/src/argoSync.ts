@@ -7,6 +7,52 @@ const FLEET_MANAGER_DEPLOY_PATH =
 const ARGO_APP_NAME = "workloads-fleet-manager";
 const ARGO_NAMESPACE = "openshift-gitops";
 
+export interface ArgoResourceStatus {
+  kind: string;
+  name: string;
+  syncStatus: string;
+  healthStatus: string;
+  message?: string;
+}
+
+export interface ArgoAppStatus {
+  syncStatus: string;
+  healthStatus: string;
+  operationPhase: string;
+  operationMessage: string;
+  operationStartedAt: string;
+  operationFinishedAt: string;
+  resources: ArgoResourceStatus[];
+  syncRevision: string;
+}
+
+interface ArgoApplicationCR {
+  status?: {
+    sync?: { status?: string; revision?: string };
+    health?: { status?: string };
+    operationState?: {
+      phase?: string;
+      message?: string;
+      startedAt?: string;
+      finishedAt?: string;
+      syncResult?: {
+        resources?: Array<{
+          kind?: string;
+          name?: string;
+          status?: string;
+          message?: string;
+        }>;
+      };
+    };
+    resources?: Array<{
+      kind?: string;
+      name?: string;
+      status?: string;
+      health?: { status?: string };
+    }>;
+  };
+}
+
 interface GitHubFileResponse {
   sha: string;
   content: string;
@@ -123,6 +169,25 @@ export class ArgoSync {
     healthStatus: string;
     operationPhase: string;
   }> {
+    const full = await this.getArgoAppStatus();
+    return {
+      syncStatus: full.syncStatus,
+      healthStatus: full.healthStatus,
+      operationPhase: full.operationPhase,
+    };
+  }
+
+  async getArgoAppStatus(): Promise<ArgoAppStatus> {
+    const empty: ArgoAppStatus = {
+      syncStatus: "Unknown",
+      healthStatus: "Unknown",
+      operationPhase: "Unknown",
+      operationMessage: "",
+      operationStartedAt: "",
+      operationFinishedAt: "",
+      resources: [],
+      syncRevision: "",
+    };
     try {
       const resp = await fetch(
         `${this.k8sApiBase}/apis/argoproj.io/v1alpha1/namespaces/${ARGO_NAMESPACE}/applications/${ARGO_APP_NAME}`,
@@ -135,35 +200,52 @@ export class ArgoSync {
           { status: resp.status, body: text.slice(0, 200) },
           "argoSync: k8s API error",
         );
-        return {
-          syncStatus: "Unknown",
-          healthStatus: "Unknown",
-          operationPhase: "Unknown",
-        };
+        return empty;
       }
 
-      const app = (await resp.json()) as {
-        status?: {
-          sync?: { status?: string };
-          health?: { status?: string };
-          operationState?: { phase?: string };
-        };
-      };
+      const app = (await resp.json()) as ArgoApplicationCR;
+      const resources: ArgoResourceStatus[] = (
+        app.status?.resources ?? []
+      ).map((r) => ({
+        kind: r.kind ?? "",
+        name: r.name ?? "",
+        syncStatus: r.status ?? "Unknown",
+        healthStatus: r.health?.status ?? "",
+      }));
+
+      const opResources = app.status?.operationState?.syncResult?.resources;
+      if (opResources) {
+        for (const or of opResources) {
+          const match = resources.find(
+            (r) => r.kind === or.kind && r.name === or.name,
+          );
+          if (match && or.message) {
+            match.message = or.message;
+          }
+        }
+      }
+
       return {
         syncStatus: app.status?.sync?.status ?? "Unknown",
         healthStatus: app.status?.health?.status ?? "Unknown",
-        operationPhase: app.status?.operationState?.phase ?? "Unknown",
+        operationPhase:
+          app.status?.operationState?.phase ?? "Unknown",
+        operationMessage:
+          app.status?.operationState?.message ?? "",
+        operationStartedAt:
+          app.status?.operationState?.startedAt ?? "",
+        operationFinishedAt:
+          app.status?.operationState?.finishedAt ?? "",
+        resources,
+        syncRevision:
+          app.status?.sync?.revision ?? "",
       };
     } catch (err) {
       this.log.error(
         { err: (err as Error).message },
-        "argoSync: failed to get sync status",
+        "argoSync: failed to get app status",
       );
-      return {
-        syncStatus: "Unknown",
-        healthStatus: "Unknown",
-        operationPhase: "Unknown",
-      };
+      return empty;
     }
   }
 

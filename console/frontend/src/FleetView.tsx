@@ -17,6 +17,8 @@ import {
 } from "@patternfly/react-core";
 import type {
   AnomalyPoint,
+  ArgoAppStatus,
+  ArgoResourceStatus,
   ButtonDef,
   DemoLinks,
   FactoryStatus,
@@ -25,7 +27,12 @@ import type {
   ScenarioDetail,
   StatusLogEntry,
 } from "./types.js";
-import { executeAction, fetchFleetStatus, fetchScenarioDetail } from "./api.js";
+import {
+  executeAction,
+  fetchArgoStatus,
+  fetchFleetStatus,
+  fetchScenarioDetail,
+} from "./api.js";
 
 const POLL_INTERVAL = 3000;
 
@@ -49,12 +56,13 @@ const DEMO_STEPS: DemoStep[] = [
     preText:
       "Push the new VLA policy version to Factory A via GitOps. This commits a version change to Git and triggers a real Argo CD sync.",
     activeText:
-      "Deploying — watch the activity log below for real-time progress. The console is committing to Git, then triggering an Argo CD sync.",
-    doneText: "Factory A is now running v1.4. Argo CD sync completed successfully.",
+      "Deploying — watch the activity log and Argo sync panel below for real-time progress.",
+    doneText:
+      "Factory A is now running v1.4. Argo CD sync completed successfully.",
     linkKeys: ["argoFleetManager", "ocpFleetManager"],
     linkLabels: ["Argo CD: fleet-manager", "OpenShift: fleet-manager pods"],
     lookFor:
-      "In Argo CD, look for the fleet-manager Application — it should show 'Syncing' then 'Synced'. Click into it to see the deployment rolling out with the new POLICY_VERSION env var.",
+      "Watch the Argo Sync Status panel below — you'll see the Deployment resource go from Synced → OutOfSync → Synced as the new policy version rolls out.",
   },
   {
     id: "anomaly",
@@ -68,7 +76,7 @@ const DEMO_STEPS: DemoStep[] = [
     linkKeys: ["argoFleetManager"],
     linkLabels: ["Argo CD: rollback sync"],
     lookFor:
-      "In Argo CD, you'll see a second sync as the rollback commits v1.3 back to Git and re-syncs.",
+      "Watch the Argo panel — a second sync cycle will appear as the rollback commits v1.3 back to Git.",
   },
   {
     id: "reset",
@@ -258,7 +266,9 @@ function AnomalyBar({ score }: { score: number }) {
           }}
         />
       </div>
-      <span style={{ fontSize: 12, color: "#6A6E73" }}>{score.toFixed(2)}</span>
+      <span style={{ fontSize: 12, color: "#6A6E73" }}>
+        {score.toFixed(2)}
+      </span>
     </div>
   );
 }
@@ -315,6 +325,135 @@ function AnomalySparkline({ history }: { history: AnomalyPoint[] }) {
         {latest.toFixed(2)}
       </span>
     </div>
+  );
+}
+
+function syncBadgeColor(
+  status: string,
+): "green" | "orange" | "red" | "grey" {
+  if (status === "Synced") return "green";
+  if (status === "OutOfSync") return "orange";
+  return "grey";
+}
+
+function healthBadgeColor(
+  status: string,
+): "green" | "blue" | "orange" | "red" | "grey" {
+  if (status === "Healthy") return "green";
+  if (status === "Progressing") return "blue";
+  if (status === "Degraded") return "red";
+  if (status === "Suspended") return "orange";
+  return "grey";
+}
+
+function opPhaseBadgeColor(
+  phase: string,
+): "green" | "blue" | "orange" | "red" | "grey" {
+  if (phase === "Succeeded") return "green";
+  if (phase === "Running") return "blue";
+  if (phase === "Failed" || phase === "Error") return "red";
+  return "grey";
+}
+
+function ResourceRow({ r }: { r: ArgoResourceStatus }) {
+  const syncColor = syncBadgeColor(r.syncStatus);
+  const healthColor = r.healthStatus ? healthBadgeColor(r.healthStatus) : null;
+  return (
+    <div className="showcase-argo-resource-row">
+      <span className="showcase-argo-resource-kind">{r.kind}</span>
+      <span className="showcase-argo-resource-name">{r.name}</span>
+      <Label color={syncColor} isCompact>
+        {r.syncStatus}
+      </Label>
+      {healthColor && (
+        <Label color={healthColor} isCompact>
+          {r.healthStatus}
+        </Label>
+      )}
+    </div>
+  );
+}
+
+function ArgoSyncPanel({
+  argo,
+  links,
+}: {
+  argo: ArgoAppStatus | null;
+  links: DemoLinks | null;
+}) {
+  if (!argo || argo.syncStatus === "Unknown") return null;
+
+  const rev = argo.syncRevision ? argo.syncRevision.slice(0, 7) : "";
+  const opTime =
+    argo.operationStartedAt && argo.operationFinishedAt
+      ? `${Math.round(
+          (new Date(argo.operationFinishedAt).getTime() -
+            new Date(argo.operationStartedAt).getTime()) /
+            1000,
+        )}s`
+      : argo.operationStartedAt
+        ? "in progress…"
+        : "";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <Flex
+            alignItems={{ default: "alignItemsCenter" }}
+            spaceItems={{ default: "spaceItemsSm" }}
+          >
+            <FlexItem>Argo CD: fleet-manager</FlexItem>
+            <FlexItem>
+              <Label color={syncBadgeColor(argo.syncStatus)} isCompact>
+                {argo.syncStatus}
+              </Label>
+            </FlexItem>
+            <FlexItem>
+              <Label color={healthBadgeColor(argo.healthStatus)} isCompact>
+                {argo.healthStatus}
+              </Label>
+            </FlexItem>
+            <FlexItem>
+              <Label color={opPhaseBadgeColor(argo.operationPhase)} isCompact>
+                {argo.operationPhase}
+              </Label>
+            </FlexItem>
+            {rev && (
+              <FlexItem>
+                <span
+                  style={{ fontFamily: "monospace", fontSize: 12, color: "#6A6E73" }}
+                >
+                  {rev}
+                </span>
+              </FlexItem>
+            )}
+            {opTime && (
+              <FlexItem>
+                <span style={{ fontSize: 12, color: "#6A6E73" }}>
+                  {opTime}
+                </span>
+              </FlexItem>
+            )}
+            {links?.argoFleetManager && (
+              <FlexItem align={{ default: "alignRight" }}>
+                <ProofLink
+                  href={links.argoFleetManager}
+                  label="Open in Argo CD"
+                />
+              </FlexItem>
+            )}
+          </Flex>
+        </CardTitle>
+      </CardHeader>
+      <CardBody className="showcase-card-body-flush">
+        <div className="showcase-argo-resource-list">
+          {argo.resources.map((r) => (
+            <ResourceRow key={`${r.kind}/${r.name}`} r={r} />
+          ))}
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -398,11 +537,13 @@ function FactoryPanel({ factory }: { factory: FactoryStatus }) {
 
 export function FleetView({ events }: { events: FleetMessage[] }) {
   const [fleet, setFleet] = useState<FleetStatus | null>(null);
+  const [argo, setArgo] = useState<ArgoAppStatus | null>(null);
   const [scenario, setScenario] = useState<ScenarioDetail | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     fetchFleetStatus().then(setFleet).catch(() => undefined);
+    fetchArgoStatus().then(setArgo).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -501,7 +642,11 @@ export function FleetView({ events }: { events: FleetMessage[] }) {
         </Flex>
       </StackItem>
 
-      {fleet && (
+      <StackItem>
+        <ArgoSyncPanel argo={argo} links={fleet?.links ?? null} />
+      </StackItem>
+
+      {fleet && fleet.anomalyHistory.length > 0 && (
         <StackItem>
           <Card>
             <CardHeader>

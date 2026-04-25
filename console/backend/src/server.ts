@@ -78,6 +78,10 @@ fastify.post<{ Params: { action: string }; Body: Record<string, unknown> }>(
   },
 );
 
+fastify.get("/api/argo-status", async () => {
+  return argoSync.getArgoAppStatus();
+});
+
 fastify.get("/api/fleet", async () => {
   const telemetry = stream.getLatestTelemetry();
   const ds = stream.demoState;

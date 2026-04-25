@@ -65,6 +65,25 @@ export interface FleetStatus {
   factories: FactoryStatus[];
 }
 
+export interface ArgoResourceStatus {
+  kind: string;
+  name: string;
+  syncStatus: string;
+  healthStatus: string;
+  message?: string;
+}
+
+export interface ArgoAppStatus {
+  syncStatus: string;
+  healthStatus: string;
+  operationPhase: string;
+  operationMessage: string;
+  operationStartedAt: string;
+  operationFinishedAt: string;
+  resources: ArgoResourceStatus[];
+  syncRevision: string;
+}
+
 export interface LineageNode {
   id: string;
   type: "dataset" | "pipeline" | "training" | "validation" | "model" | "synthetic";
