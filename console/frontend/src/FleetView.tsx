@@ -60,15 +60,50 @@ function statusColor(
   return "grey";
 }
 
+function AnomalyBar({ score }: { score: number }) {
+  const pct = Math.min(score * 100, 100);
+  const color = score >= 0.85 ? "#A30000" : score >= 0.5 ? "#F0AB00" : "#3E8635";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div
+        style={{
+          width: 120,
+          height: 8,
+          backgroundColor: "#E0E0E0",
+          borderRadius: 4,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            backgroundColor: color,
+            borderRadius: 4,
+            transition: "width 0.3s ease",
+          }}
+        />
+      </div>
+      <span style={{ fontSize: 12, color: "#6A6E73" }}>{score.toFixed(2)}</span>
+    </div>
+  );
+}
+
 function AnomalySparkline({ history }: { history: AnomalyPoint[] }) {
+  const w = 240;
+  const h = 40;
+
   if (history.length === 0) {
     return (
-      <span style={{ fontSize: 12, color: "#6A6E73" }}>no data</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <svg width={w} height={h} style={{ display: "block" }}>
+          <line x1={0} y1={h - 4} x2={w} y2={h - 4} stroke="#E0E0E0" strokeWidth={1} />
+        </svg>
+        <span style={{ fontSize: 12, color: "#6A6E73" }}>baseline</span>
+      </div>
     );
   }
 
-  const w = 120;
-  const h = 24;
   const latest = history[history.length - 1]!.v;
   const points = history
     .map((p, i) => {
@@ -83,14 +118,15 @@ function AnomalySparkline({ history }: { history: AnomalyPoint[] }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <svg width={w} height={h} style={{ display: "block" }}>
+        <line x1={0} y1={h - 4} x2={w} y2={h - 4} stroke="#E0E0E0" strokeWidth={1} strokeDasharray="4 4" />
         <polyline
           points={points}
           fill="none"
           stroke={color}
-          strokeWidth={1.5}
+          strokeWidth={2}
         />
       </svg>
-      <span style={{ fontSize: 12, color, fontWeight: 600 }}>
+      <span style={{ fontSize: 13, color, fontWeight: 600 }}>
         {latest.toFixed(2)}
       </span>
     </div>
@@ -160,7 +196,7 @@ function FactoryPanel({ factory }: { factory: FactoryStatus }) {
 
           <StackItem>
             <div style={{ fontSize: 13, color: "#6A6E73" }}>Anomaly score</div>
-            <AnomalySparkline history={[{ t: Date.now(), v: factory.anomalyScore }]} />
+            <AnomalyBar score={factory.anomalyScore} />
           </StackItem>
 
           <StackItem>
@@ -276,7 +312,7 @@ export function FleetView({ events }: { events: FleetMessage[] }) {
         </Flex>
       </StackItem>
 
-      {fleet && fleet.anomalyHistory.length > 0 && (
+      {fleet && (
         <StackItem>
           <Card>
             <CardHeader>

@@ -52,6 +52,15 @@ spec:
                 secretKeyRef:
                   name: coturn-credentials
                   key: password
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: git-source-secret
+                  key: token
+            - name: GITHUB_REPO
+              value: jeremyary/industrial-ai-showcase
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
           resources:
             requests:
               cpu: 100m

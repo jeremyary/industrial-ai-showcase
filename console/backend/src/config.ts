@@ -12,6 +12,8 @@ export interface AppConfig {
   turnUrl: string;
   turnUsername: string;
   turnCredential: string;
+  githubToken: string;
+  githubRepo: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -33,5 +35,7 @@ export function loadConfig(): AppConfig {
     turnUrl: process.env.TURN_URL ?? "",
     turnUsername: process.env.TURN_USERNAME ?? "",
     turnCredential: process.env.TURN_CREDENTIAL ?? "",
+    githubToken: process.env.GITHUB_TOKEN ?? "",
+    githubRepo: process.env.GITHUB_REPO ?? "jeremyary/industrial-ai-showcase",
   };
 }

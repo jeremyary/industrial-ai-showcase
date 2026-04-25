@@ -1,4 +1,6 @@
 // This project was developed with assistance from AI tools.
+import type { ArgoSync } from "./argoSync.js";
+import type { SimpleLogger } from "./kafkaStream.js";
 
 export type DemoPhase =
   | "idle"
@@ -24,7 +26,8 @@ interface FactoryState {
 
 const BASELINE_VERSION = "vla-warehouse-v1.3";
 const ANOMALY_RING_SIZE = 60;
-const ARGO_TRANSITION_MS = 3000;
+const ARGO_POLL_MS = 2000;
+const ARGO_FALLBACK_MS = 3000;
 
 export class DemoState {
   phase: DemoPhase = "idle";
@@ -41,8 +44,10 @@ export class DemoState {
   };
   anomalyHistory: AnomalyPoint[] = [];
 
-  private argoTimers: ReturnType<typeof setTimeout>[] = [];
+  private timers: ReturnType<typeof setTimeout>[] = [];
   private promotedVersion: string = BASELINE_VERSION;
+  argoSync: ArgoSync | null = null;
+  log: SimpleLogger | null = null;
 
   promotePolicy(factory: string, version: string): void {
     const f = this.factories[factory];
@@ -51,7 +56,12 @@ export class DemoState {
     f.policyVersion = version;
     f.argoSyncStatus = "syncing";
     this.phase = "promoted";
-    this.scheduleArgoSettle(factory, "synced");
+
+    if (this.argoSync?.enabled) {
+      void this.realArgoPromote(factory, version);
+    } else {
+      this.scheduleSettle(factory, "synced");
+    }
   }
 
   advanceLineage(phase: string): void {
@@ -87,8 +97,8 @@ export class DemoState {
   }
 
   reset(): void {
-    for (const timer of this.argoTimers) clearTimeout(timer);
-    this.argoTimers = [];
+    for (const timer of this.timers) clearTimeout(timer);
+    this.timers = [];
     this.phase = "idle";
     this.promotedVersion = BASELINE_VERSION;
     for (const key of Object.keys(this.factories)) {
@@ -105,6 +115,10 @@ export class DemoState {
       model: "completed",
     };
     this.anomalyHistory = [];
+
+    if (this.argoSync?.enabled) {
+      void this.argoSync.updatePolicyVersion(BASELINE_VERSION);
+    }
   }
 
   private triggerRollback(robotId: string): void {
@@ -113,13 +127,72 @@ export class DemoState {
     const f = this.factories[factory];
     if (!f) return;
     f.argoSyncStatus = "reverting";
-    this.scheduleArgoSettle(factory, "synced", () => {
-      f.policyVersion = BASELINE_VERSION;
-      this.phase = "rolled-back";
+
+    if (this.argoSync?.enabled) {
+      void this.realArgoRollback(factory);
+    } else {
+      this.scheduleSettle(factory, "synced", () => {
+        f.policyVersion = BASELINE_VERSION;
+        this.phase = "rolled-back";
+      });
+    }
+  }
+
+  private async realArgoPromote(factory: string, version: string): Promise<void> {
+    const ok = await this.argoSync!.updatePolicyVersion(version);
+    if (!ok) {
+      this.scheduleSettle(factory, "synced");
+      return;
+    }
+    this.pollArgoUntilSynced(factory, () => {
+      this.log?.info({ factory, version }, "argoSync: promotion sync complete");
     });
   }
 
-  private scheduleArgoSettle(
+  private async realArgoRollback(factory: string): Promise<void> {
+    const f = this.factories[factory];
+    const ok = await this.argoSync!.updatePolicyVersion(BASELINE_VERSION);
+    if (!ok) {
+      this.scheduleSettle(factory, "synced", () => {
+        if (f) f.policyVersion = BASELINE_VERSION;
+        this.phase = "rolled-back";
+      });
+      return;
+    }
+    this.pollArgoUntilSynced(factory, () => {
+      if (f) f.policyVersion = BASELINE_VERSION;
+      this.phase = "rolled-back";
+      this.log?.info({ factory }, "argoSync: rollback sync complete");
+    });
+  }
+
+  private pollArgoUntilSynced(factory: string, onDone: () => void): void {
+    let attempts = 0;
+    const maxAttempts = 60;
+    const poll = (): void => {
+      attempts++;
+      void this.argoSync!.getArgoSyncStatus().then(({ syncStatus, healthStatus }) => {
+        const f = this.factories[factory];
+        if (syncStatus === "Synced" && healthStatus === "Healthy") {
+          if (f) f.argoSyncStatus = "synced";
+          onDone();
+          return;
+        }
+        if (attempts >= maxAttempts) {
+          this.log?.warn({ factory, syncStatus, healthStatus }, "argoSync: poll timeout — marking synced");
+          if (f) f.argoSyncStatus = "synced";
+          onDone();
+          return;
+        }
+        const timer = setTimeout(poll, ARGO_POLL_MS);
+        this.timers.push(timer);
+      });
+    };
+    const timer = setTimeout(poll, ARGO_POLL_MS);
+    this.timers.push(timer);
+  }
+
+  private scheduleSettle(
     factory: string,
     targetStatus: ArgoSyncStatus,
     onSettle?: () => void,
@@ -128,7 +201,7 @@ export class DemoState {
       const f = this.factories[factory];
       if (f) f.argoSyncStatus = targetStatus;
       onSettle?.();
-    }, ARGO_TRANSITION_MS);
-    this.argoTimers.push(timer);
+    }, ARGO_FALLBACK_MS);
+    this.timers.push(timer);
   }
 }

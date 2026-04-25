@@ -5,6 +5,7 @@ import fastifyCors from "@fastify/cors";
 import { loadConfig } from "./config.js";
 import { FleetStream, type FleetMessage } from "./kafkaStream.js";
 import { registerStreamRoutes } from "./stream.js";
+import { ArgoSync } from "./argoSync.js";
 
 const config = loadConfig();
 const fastify = Fastify({
@@ -13,6 +14,9 @@ const fastify = Fastify({
 const log = fastify.log;
 await fastify.register(fastifyCors, { origin: true });
 
+const argoSync = new ArgoSync(config.githubToken, config.githubRepo, log);
+log.info({ argoEnabled: argoSync.enabled }, "argo sync initialized");
+
 const stream = new FleetStream(
   config.kafkaBootstrapServers,
   config.kafkaTopics,
@@ -20,6 +24,8 @@ const stream = new FleetStream(
   config.kafkaClientId,
   log,
 );
+stream.demoState.argoSync = argoSync;
+stream.demoState.log = log;
 
 fastify.get("/healthz", async () => ({ status: "ok" }));
 fastify.get("/readyz", async () => ({ status: "ready" }));
