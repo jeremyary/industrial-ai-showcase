@@ -40,7 +40,14 @@ export interface FactoryStatus {
   lastHeartbeat: string;
 }
 
+export interface AnomalyPoint {
+  t: number;
+  v: number;
+}
+
 export interface FleetStatus {
+  demoPhase: string;
+  anomalyHistory: AnomalyPoint[];
   factories: FactoryStatus[];
 }
 

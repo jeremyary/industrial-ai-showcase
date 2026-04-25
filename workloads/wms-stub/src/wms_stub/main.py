@@ -17,7 +17,15 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.events import CameraCommand, FleetMission, FleetTelemetry, MissionKind, SafetyAlert
+from common_lib.events import (
+    CameraCommand,
+    EventClass,
+    FleetEvent,
+    FleetMission,
+    FleetTelemetry,
+    MissionKind,
+    SafetyAlert,
+)
 from common_lib.kafka import JsonProducer
 from common_lib.logging import configure_logging
 from wms_stub import __version__
@@ -236,6 +244,109 @@ async def trigger_anomaly(req: TriggerAnomalyRequest | None = None) -> dict[str,
         "robot_id": robot_id,
         "anomaly_score": str(anomaly_score),
     }
+
+
+# ---------------------------------------------------------------------------
+# Policy promotion + lineage advancement (Fleet demo, Segments 2–3)
+# ---------------------------------------------------------------------------
+
+class PromotePolicyRequest(BaseModel):
+    factory: str = Field(default="factory-a")
+    version: str = Field(default="vla-warehouse-v1.4")
+
+
+@app.post("/promote-policy")
+async def promote_policy(req: PromotePolicyRequest | None = None) -> dict[str, str]:
+    """Signal a policy promotion for the fleet demo."""
+    log: "BoundLogger" = app.state.log
+    producer: JsonProducer = app.state.producer
+
+    factory = req.factory if req else "factory-a"
+    version = req.version if req else "vla-warehouse-v1.4"
+    trace_id = uuid4().hex
+
+    event = FleetEvent(
+        trace_id=trace_id,
+        event_class=EventClass.POLICY_PROMOTED,
+        source="wms-stub",
+        location=factory,
+        confidence=1.0,
+        payload={"factory": factory, "version": version},
+    )
+    producer.send("fleet.events", key=factory, value=event)
+    producer.flush(timeout=2.0)
+
+    log.info("policy.promoted", trace_id=trace_id, factory=factory, version=version)
+    return {"status": "promoted", "trace_id": trace_id, "factory": factory, "version": version}
+
+
+class AdvanceLineageRequest(BaseModel):
+    phase: str = Field(default="training-running")
+
+
+@app.post("/advance-lineage")
+async def advance_lineage(req: AdvanceLineageRequest | None = None) -> dict[str, str]:
+    """Advance the lineage view to show training progress."""
+    log: "BoundLogger" = app.state.log
+    producer: JsonProducer = app.state.producer
+
+    phase = req.phase if req else "training-running"
+    trace_id = uuid4().hex
+
+    event = FleetEvent(
+        trace_id=trace_id,
+        event_class=EventClass.LINEAGE_ADVANCE,
+        source="wms-stub",
+        location="hub",
+        confidence=1.0,
+        payload={"phase": phase},
+    )
+    producer.send("fleet.events", key="lineage", value=event)
+    producer.flush(timeout=2.0)
+
+    log.info("lineage.advanced", trace_id=trace_id, phase=phase)
+    return {"status": "ok", "trace_id": trace_id, "phase": phase}
+
+
+@app.post("/reset-fleet-demo")
+async def reset_fleet_demo() -> dict[str, str]:
+    """Reset the fleet demo state machine and camera."""
+    settings: WmsStubSettings = app.state.settings
+    log: "BoundLogger" = app.state.log
+    producer: JsonProducer = app.state.producer
+    trace_id = uuid4().hex
+
+    event = FleetEvent(
+        trace_id=trace_id,
+        event_class=EventClass.DEMO_RESET,
+        source="wms-stub",
+        location="hub",
+        confidence=1.0,
+    )
+    producer.send("fleet.events", key="demo", value=event)
+
+    cmd = CameraCommand(
+        trace_id=trace_id,
+        camera_id=settings.camera_id,
+        state="empty",
+    )
+    producer.send(settings.camera_commands_topic, key=settings.camera_id, value=cmd)
+
+    alert = SafetyAlert(
+        trace_id=trace_id,
+        aisle_id="aisle-3",
+        camera_id=settings.camera_id,
+        detection_label="demo-reset",
+        confidence=1.0,
+        source_model="wms-stub",
+        obstructed=False,
+        detail="fleet demo reset",
+    )
+    producer.send("fleet.safety.alerts", key=settings.camera_id, value=alert)
+    producer.flush(timeout=2.0)
+
+    log.info("fleet-demo.reset", trace_id=trace_id)
+    return {"status": "ok", "trace_id": trace_id}
 
 
 async def _set_camera_state(target_state: str) -> dict[str, str]:

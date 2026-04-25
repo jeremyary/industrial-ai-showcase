@@ -323,3 +323,37 @@
   overflow-x: auto;
   padding: 8px 0;
 }
+
+/* Fleet view: policy pill promotion flash */
+@keyframes showcase-pill-promote {
+  0% { border-color: #3E8635; transform: scale(1.08); }
+  100% { border-color: transparent; transform: scale(1); }
+}
+
+.showcase-policy-pill--promoting {
+  animation: showcase-pill-promote 600ms ease-out;
+  border: 2px solid #3E8635;
+  border-radius: 9999px;
+}
+
+/* Fleet view: policy pill rollback flash */
+@keyframes showcase-pill-revert {
+  0% { border-color: #A30000; transform: scale(1.08); }
+  100% { border-color: transparent; transform: scale(1); }
+}
+
+.showcase-policy-pill--reverting {
+  animation: showcase-pill-revert 600ms ease-out;
+  border: 2px solid #A30000;
+  border-radius: 9999px;
+}
+
+/* Fleet view: argo syncing/reverting pulse */
+@keyframes showcase-argo-pulse-anim {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.showcase-argo-pulse {
+  animation: showcase-argo-pulse-anim 1s ease-in-out infinite;
+}

@@ -1,6 +1,7 @@
 // This project was developed with assistance from AI tools.
 import { Kafka, type Consumer, type EachMessagePayload } from "kafkajs";
 import { EventEmitter } from "node:events";
+import { DemoState } from "./demoState.js";
 
 export interface SimpleLogger {
   info(obj: unknown, msg?: string): void;
@@ -32,6 +33,7 @@ export class FleetStream extends EventEmitter {
   private readonly DIAG_INTERVAL_MS = 30_000;
   private latestCameraFrame: Buffer | null = null;
   private robotTelemetry: Record<string, RobotTelemetrySnapshot> = {};
+  readonly demoState = new DemoState();
 
   constructor(
     bootstrapServers: string,
@@ -108,6 +110,24 @@ export class FleetStream extends EventEmitter {
                 policyVersion: typeof p["policy_version"] === "string" ? (p["policy_version"] as string) : "vla-warehouse-v1.3",
                 lastHeartbeat: new Date().toISOString(),
               };
+              if (typeof p["anomaly_score"] === "number") {
+                this.demoState.recordAnomaly(robotId, p["anomaly_score"] as number);
+              }
+            }
+          }
+          if (msg.topic === "fleet.events" && msg.payload && typeof msg.payload === "object") {
+            const p = msg.payload as Record<string, unknown>;
+            const ec = p["event_class"] as string | undefined;
+            const payload = (p["payload"] ?? {}) as Record<string, unknown>;
+            if (ec === "policy.promoted") {
+              this.demoState.promotePolicy(
+                (payload["factory"] as string) ?? "factory-a",
+                (payload["version"] as string) ?? "vla-warehouse-v1.4",
+              );
+            } else if (ec === "lineage.advance") {
+              this.demoState.advanceLineage((payload["phase"] as string) ?? "training-running");
+            } else if (ec === "demo.reset") {
+              this.demoState.reset();
             }
           }
           if (msg.topic.startsWith("warehouse.cameras.") && msg.payload && typeof msg.payload === "object") {

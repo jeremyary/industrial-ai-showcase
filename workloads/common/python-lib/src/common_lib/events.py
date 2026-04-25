@@ -26,6 +26,9 @@ class EventClass(str, Enum):
 
     AISLE_OBSTRUCTION = "aisle.obstruction"
     SCENE_QUIESCENT = "scene.quiescent"
+    POLICY_PROMOTED = "policy.promoted"
+    LINEAGE_ADVANCE = "lineage.advance"
+    DEMO_RESET = "demo.reset"
 
 
 class FleetEvent(BaseModel):

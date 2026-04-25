@@ -59,9 +59,41 @@ POLICY_ROLLOUT = Scenario(
 )
 
 
+FLEET_DEMO = Scenario(
+    name="fleet-demo",
+    buttons=(
+        ButtonDef(
+            label="Start Training",
+            action="advance-lineage",
+            params={"phase": "training-running"},
+        ),
+        ButtonDef(
+            label="Complete Training",
+            action="advance-lineage",
+            params={"phase": "training-complete"},
+        ),
+        ButtonDef(
+            label="Promote v1.4",
+            action="promote-policy",
+            params={"factory": "factory-a", "version": "vla-warehouse-v1.4"},
+        ),
+        ButtonDef(
+            label="Trigger Anomaly",
+            action="trigger-anomaly",
+            params={"anomaly_score": "0.95"},
+        ),
+        ButtonDef(
+            label="Reset Demo",
+            action="reset-fleet-demo",
+        ),
+    ),
+)
+
+
 _CATALOG: dict[str, Scenario] = {
     AISLE_3_OBSTRUCTION.name: AISLE_3_OBSTRUCTION,
     POLICY_ROLLOUT.name: POLICY_ROLLOUT,
+    FLEET_DEMO.name: FLEET_DEMO,
 }
 
 

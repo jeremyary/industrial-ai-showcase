@@ -74,103 +74,111 @@ fastify.post<{ Params: { action: string }; Body: Record<string, unknown> }>(
 
 fastify.get("/api/fleet", async () => {
   const telemetry = stream.getLatestTelemetry();
+  const ds = stream.demoState;
+  const fa = ds.factories["factory-a"];
+  const fb = ds.factories["factory-b"];
   return {
+    demoPhase: ds.phase,
+    anomalyHistory: ds.anomalyHistory,
     factories: [
       {
         name: "Factory A",
         namespace: "robot-edge",
-        policyVersion: telemetry["fl-07"]?.policyVersion ?? "vla-warehouse-v1.3",
+        policyVersion: fa?.policyVersion ?? telemetry["fl-07"]?.policyVersion ?? "vla-warehouse-v1.3",
         robotId: "fl-07",
         robotStatus: telemetry["fl-07"]?.robotStatus ?? "active",
         anomalyScore: telemetry["fl-07"]?.anomalyScore ?? 0.12,
-        argoSyncStatus: "synced",
+        argoSyncStatus: fa?.argoSyncStatus ?? "synced",
         lastHeartbeat: telemetry["fl-07"]?.lastHeartbeat ?? new Date().toISOString(),
       },
       {
         name: "Factory B",
         namespace: "factory-b",
-        policyVersion: telemetry["fl-08"]?.policyVersion ?? "vla-warehouse-v1.3",
+        policyVersion: fb?.policyVersion ?? telemetry["fl-08"]?.policyVersion ?? "vla-warehouse-v1.3",
         robotId: "fl-08",
         robotStatus: telemetry["fl-08"]?.robotStatus ?? "idle",
         anomalyScore: telemetry["fl-08"]?.anomalyScore ?? 0.03,
-        argoSyncStatus: "synced",
+        argoSyncStatus: fb?.argoSyncStatus ?? "synced",
         lastHeartbeat: telemetry["fl-08"]?.lastHeartbeat ?? new Date().toISOString(),
       },
     ],
   };
 });
 
-fastify.get("/api/lineage", async () => ({
-  nodes: [
-    {
-      id: "dataset",
-      type: "dataset",
-      label: "G1 Teleop Dataset",
-      status: "completed",
-      metadata: {
-        repo: "nvidia/PhysicalAI-Robotics-GR00T-Teleop-G1",
-        episodes: "311",
-        modality: "video + joint positions (43 DOF)",
+fastify.get("/api/lineage", async () => {
+  const ls = stream.demoState.lineageStatuses;
+  return {
+    nodes: [
+      {
+        id: "dataset",
+        type: "dataset",
+        label: "G1 Teleop Dataset",
+        status: ls["dataset"] ?? "completed",
+        metadata: {
+          repo: "nvidia/PhysicalAI-Robotics-GR00T-Teleop-G1",
+          episodes: "311",
+          modality: "video + joint positions (43 DOF)",
+        },
       },
-    },
-    {
-      id: "pipeline",
-      type: "pipeline",
-      label: "KFP Pipeline Run",
-      status: "completed",
-      metadata: {
-        pipeline: "vla-finetune",
-        dspa_namespace: "vla-training",
-        steps: "data_prep → fine_tune → validate → register",
+      {
+        id: "pipeline",
+        type: "pipeline",
+        label: "KFP Pipeline Run",
+        status: ls["pipeline"] ?? "completed",
+        metadata: {
+          pipeline: "vla-finetune",
+          dspa_namespace: "vla-training",
+          steps: "data_prep → fine_tune → validate → register",
+        },
       },
-    },
-    {
-      id: "training",
-      type: "training",
-      label: "GR00T N1.7-3B Fine-Tune",
-      status: "completed",
-      metadata: {
-        base_model: "nvidia/GR00T-N1.7-3B",
-        embodiment: "UNITREE_G1",
-        max_steps: "2000",
-        batch_size: "64",
-        gpu: "NVIDIA L40S",
-        final_loss: "0.0342",
+      {
+        id: "training",
+        type: "training",
+        label: "GR00T N1.7-3B Fine-Tune",
+        status: ls["training"] ?? "completed",
+        metadata: {
+          base_model: "nvidia/GR00T-N1.7-3B",
+          embodiment: "UNITREE_G1",
+          max_steps: "2000",
+          batch_size: "64",
+          gpu: "NVIDIA L40S",
+          final_loss: "0.0342",
+        },
       },
-    },
-    {
-      id: "validation",
-      type: "validation",
-      label: "ONNX Validation",
-      status: "completed",
-      metadata: {
-        checks: "structure, inference, finite outputs, determinism",
-        result: "PASSED",
+      {
+        id: "validation",
+        type: "validation",
+        label: "ONNX Validation",
+        status: ls["validation"] ?? "completed",
+        metadata: {
+          checks: "structure, inference, finite outputs, determinism",
+          result: "PASSED",
+        },
       },
-    },
-    {
-      id: "model",
-      type: "model",
-      label: "g1-vla-finetune v1",
-      status: "completed",
-      metadata: {
-        registry: "RHOAI Model Registry",
-        format: "ONNX",
-        uri: "s3://vla-training/vla-finetune/onnx",
-        dataset_repo: "nvidia/PhysicalAI-Robotics-GR00T-Teleop-G1",
-        base_model_repo: "nvidia/GR00T-N1.7-3B",
-        training_steps: "2000",
-        embodiment_tag: "UNITREE_G1",
+      {
+        id: "model",
+        type: "model",
+        label: "g1-vla-finetune v1",
+        status: ls["model"] ?? "completed",
+        metadata: {
+          registry: "RHOAI Model Registry",
+          format: "ONNX",
+          uri: "s3://vla-training/vla-finetune/onnx",
+          dataset_repo: "nvidia/PhysicalAI-Robotics-GR00T-Teleop-G1",
+          base_model_repo: "nvidia/GR00T-N1.7-3B",
+          training_steps: "2000",
+          embodiment_tag: "UNITREE_G1",
+        },
       },
-    },
-  ],
-  edges: [
-    { source: "dataset", target: "pipeline" },
-    { source: "pipeline", target: "training" },
-    { source: "training", target: "validation" },
-    { source: "validation", target: "model" },
-  ],
-}));
+    ],
+    edges: [
+      { source: "dataset", target: "pipeline" },
+      { source: "pipeline", target: "training" },
+      { source: "training", target: "validation" },
+      { source: "validation", target: "model" },
+    ],
+  };
+});
 
 registerStreamRoutes(fastify, config);
 
