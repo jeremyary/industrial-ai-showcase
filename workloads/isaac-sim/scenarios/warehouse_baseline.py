@@ -18,6 +18,7 @@ Env contract:
 
 import asyncio
 import json
+import math
 import os
 import queue
 import threading
@@ -52,28 +53,28 @@ FALLEN_POSES = [
     ((-3.0, 0.0, -3.01), (0.0, 0.0, -52.0)),
 ]
 
-# Route-path visualization — BasisCurves prim drawn on the warehouse floor.
 ROUTE_PATH_PRIM = "/Root/route_display"
-ROUTE_PATH_HEIGHT = 0.02  # 2 cm above floor to avoid z-fighting
+ROUTE_PATH_HEIGHT = 0.02
+ROUTE_STRIP_WIDTH = 0.25
 
 ROUTE_WAYPOINTS = {
     "aisle-3": [
-        (-12.0, 0.0, ROUTE_PATH_HEIGHT),
-        (-10.0, 0.0, ROUTE_PATH_HEIGHT),
-        (13.0, 0.0, ROUTE_PATH_HEIGHT),
-        (15.0, 0.0, ROUTE_PATH_HEIGHT),
+        (-22.82, 5.8,   ROUTE_PATH_HEIGHT),
+        (-13,    5.8,   ROUTE_PATH_HEIGHT),
+        (-13,    27.57, ROUTE_PATH_HEIGHT),
+        (4.284,  27.57, ROUTE_PATH_HEIGHT),
     ],
     "aisle-4": [
-        (-10.0, 0.0, ROUTE_PATH_HEIGHT),
-        (-10.0, 4.0, ROUTE_PATH_HEIGHT),
-        (13.0, 4.0, ROUTE_PATH_HEIGHT),
-        (15.0, 0.0, ROUTE_PATH_HEIGHT),
+        (-22.82, 5.8,   ROUTE_PATH_HEIGHT),
+        (-8,     5.8,   ROUTE_PATH_HEIGHT),
+        (-8,     27.57, ROUTE_PATH_HEIGHT),
+        (4.284,  27.57, ROUTE_PATH_HEIGHT),
     ],
 }
 
 ROUTE_COLORS = {
-    "dispatch": (0.0, 0.7, 1.0),   # cyan
-    "reroute": (1.0, 0.5, 0.0),    # amber
+    "dispatch": (0.0, 0.7, 1.0),
+    "reroute": (0.0, 0.7, 1.0),
 }
 
 _CMD_QUEUE: "queue.Queue[tuple]" = queue.Queue(maxsize=64)
@@ -292,37 +293,64 @@ def _create_route_path(stage, route_aisle: str, mission_kind: str) -> None:
         return
 
     color = ROUTE_COLORS.get(mission_kind, ROUTE_COLORS["dispatch"])
+    half_w = ROUTE_STRIP_WIDTH / 2.0
 
     _remove_route_path(stage)
 
+    verts = []
+    face_vert_counts = []
+    face_vert_indices = []
+
+    for i in range(len(waypoints) - 1):
+        ax, ay, az = waypoints[i]
+        bx, by, bz = waypoints[i + 1]
+
+        dx, dy = bx - ax, by - ay
+        length = math.sqrt(dx * dx + dy * dy)
+        if length < 1e-6:
+            continue
+        ux, uy = dx / length, dy / length
+        nx, ny = -uy, ux
+
+        if i > 0:
+            ax -= ux * half_w
+            ay -= uy * half_w
+        if i < len(waypoints) - 2:
+            bx += ux * half_w
+            by += uy * half_w
+
+        base = len(verts)
+        verts.extend([
+            Gf.Vec3f(ax + nx * half_w, ay + ny * half_w, az),
+            Gf.Vec3f(ax - nx * half_w, ay - ny * half_w, az),
+            Gf.Vec3f(bx - nx * half_w, by - ny * half_w, bz),
+            Gf.Vec3f(bx + nx * half_w, by + ny * half_w, bz),
+        ])
+        face_vert_counts.append(4)
+        face_vert_indices.extend([base, base + 1, base + 2, base + 3])
+
     UsdGeom.Scope.Define(stage, ROUTE_PATH_PRIM)
 
-    curves_path = f"{ROUTE_PATH_PRIM}/curves"
-    curves = UsdGeom.BasisCurves.Define(stage, curves_path)
-    pts = Vt.Vec3fArray([Gf.Vec3f(*p) for p in waypoints])
-    curves.GetPointsAttr().Set(pts)
-    curves.GetCurveVertexCountsAttr().Set(Vt.IntArray([len(waypoints)]))
-    curves.GetTypeAttr().Set(UsdGeom.Tokens.linear)
-    curves.GetWidthsAttr().Set(Vt.FloatArray([0.20] * len(waypoints)))
-    curves.SetWidthsInterpolation(UsdGeom.Tokens.vertex)
+    mesh = UsdGeom.Mesh.Define(stage, f"{ROUTE_PATH_PRIM}/strip")
+    mesh.GetPointsAttr().Set(Vt.Vec3fArray(verts))
+    mesh.GetFaceVertexCountsAttr().Set(Vt.IntArray(face_vert_counts))
+    mesh.GetFaceVertexIndicesAttr().Set(Vt.IntArray(face_vert_indices))
+    mesh.GetDoubleSidedAttr().Set(True)
 
     mat_path = f"{ROUTE_PATH_PRIM}/material"
     mat = UsdShade.Material.Define(stage, mat_path)
     shader = UsdShade.Shader.Define(stage, f"{mat_path}/shader")
     shader.CreateIdAttr("UsdPreviewSurface")
-    shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
-        Gf.Vec3f(*color)
-    )
-    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
-        Gf.Vec3f(0.0, 0.0, 0.0)
-    )
+    shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
+    shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.85)
     shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(1.0)
     mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
-    UsdShade.MaterialBindingAPI(curves.GetPrim()).Bind(mat)
+    UsdShade.MaterialBindingAPI(mesh.GetPrim()).Bind(mat)
 
     print(
         f"[baseline_diag] route path: {route_aisle} ({mission_kind}), "
-        f"{len(waypoints)} pts, color={color}",
+        f"{len(verts)} verts, color={color}",
         flush=True,
     )
 
