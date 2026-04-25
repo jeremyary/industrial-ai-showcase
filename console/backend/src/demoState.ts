@@ -174,18 +174,25 @@ export class DemoState {
     this.addLog("Committing policy version change to Git…");
     const result = await this.argoSync!.commitPolicyVersion(version);
     if (!result.ok) {
-      this.addLog("Git commit failed — falling back to simulated sync");
+      this.addLog("⚠ Git commit failed — check token permissions (needs Contents: Read and write)");
+      this.addLog("Falling back to simulated sync");
       this.scheduleSettle(factory, "synced", () => {
         if (f) f.policyVersion = version;
         this.phase = "promoted";
       });
       return;
     }
-    if (result.commitUrl) {
-      this.addLog(`Committed → ${result.commitUrl}`);
-    } else {
-      this.addLog("Policy version already at target in Git");
+    if (!result.commitUrl) {
+      if (f) {
+        f.policyVersion = version;
+        f.argoSyncStatus = "synced";
+      }
+      this.phase = "promoted";
+      this.addLog("Policy version already at target in Git — no sync needed");
+      return;
     }
+    this.addLog(`Committed → ${result.commitUrl}`);
+    if (f) f.policyVersion = version;
 
     this.addLog("Triggering Argo CD sync…");
     const synced = await this.argoSync!.triggerSync();
@@ -196,10 +203,7 @@ export class DemoState {
     }
 
     this.pollArgoUntilSynced(factory, () => {
-      if (f) {
-        f.policyVersion = version;
-        f.argoSyncStatus = "synced";
-      }
+      if (f) f.argoSyncStatus = "synced";
       this.phase = "promoted";
       this.addLog("Argo CD sync complete — promotion finished");
       this.log?.info({ factory, version }, "argoSync: promotion complete");
@@ -212,7 +216,7 @@ export class DemoState {
     this.addLog("Committing rollback to Git…");
     const result = await this.argoSync!.commitPolicyVersion(BASELINE_VERSION);
     if (!result.ok) {
-      this.addLog("Git commit failed — simulating rollback");
+      this.addLog("⚠ Git commit failed — simulating rollback");
       this.scheduleSettle(factory, "synced", () => {
         if (f) {
           f.policyVersion = BASELINE_VERSION;
@@ -222,9 +226,17 @@ export class DemoState {
       });
       return;
     }
-    if (result.commitUrl) {
-      this.addLog(`Rollback committed → ${result.commitUrl}`);
+    if (!result.commitUrl) {
+      if (f) {
+        f.policyVersion = BASELINE_VERSION;
+        f.argoSyncStatus = "synced";
+      }
+      this.phase = "rolled-back";
+      this.addLog("Policy already at baseline in Git — rollback complete");
+      return;
     }
+    this.addLog(`Rollback committed → ${result.commitUrl}`);
+    if (f) f.policyVersion = BASELINE_VERSION;
 
     this.addLog("Triggering Argo CD sync for rollback…");
     const synced = await this.argoSync!.triggerSync();
@@ -235,10 +247,7 @@ export class DemoState {
     }
 
     this.pollArgoUntilSynced(factory, () => {
-      if (f) {
-        f.policyVersion = BASELINE_VERSION;
-        f.argoSyncStatus = "synced";
-      }
+      if (f) f.argoSyncStatus = "synced";
       this.phase = "rolled-back";
       this.addLog("Rollback sync complete");
       this.log?.info({ factory }, "argoSync: rollback complete");
@@ -254,28 +263,49 @@ export class DemoState {
 
   private pollArgoUntilSynced(factory: string, onDone: () => void): void {
     let attempts = 0;
-    const maxAttempts = 60;
+    const maxAttempts = 40;
+    let sawRunning = false;
+
     const poll = (): void => {
       attempts++;
-      void this.argoSync!.getArgoSyncStatus().then(
-        ({ syncStatus, healthStatus, operationPhase }) => {
+      void this.argoSync!
+        .getArgoSyncStatus()
+        .then(({ syncStatus, healthStatus, operationPhase }) => {
           const f = this.factories[factory];
           if (attempts % 3 === 1) {
             this.addLog(
               `Argo: sync=${syncStatus} health=${healthStatus} op=${operationPhase}`,
             );
           }
+
+          if (operationPhase === "Running") sawRunning = true;
+
           if (syncStatus === "Synced" && healthStatus === "Healthy") {
             onDone();
             return;
           }
+
+          // Our triggered sync ran and completed
           if (
-            operationPhase === "Succeeded" &&
-            syncStatus === "Synced"
+            sawRunning &&
+            (operationPhase === "Succeeded" || operationPhase === "Failed")
           ) {
             onDone();
             return;
           }
+
+          // After 5 polls (~15s) without seeing Running, sync was a no-op
+          if (
+            attempts >= 5 &&
+            !sawRunning &&
+            operationPhase === "Succeeded"
+          ) {
+            this.addLog("Argo sync settled (no new operation detected)");
+            if (f) f.argoSyncStatus = "synced";
+            onDone();
+            return;
+          }
+
           if (attempts >= maxAttempts) {
             this.log?.warn(
               { factory, syncStatus, healthStatus },
@@ -288,10 +318,9 @@ export class DemoState {
           }
           const timer = setTimeout(poll, ARGO_POLL_MS);
           this.timers.push(timer);
-        },
-      );
+        });
     };
-    const timer = setTimeout(poll, ARGO_POLL_MS);
+    const timer = setTimeout(poll, 2000);
     this.timers.push(timer);
   }
 
