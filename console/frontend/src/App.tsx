@@ -32,8 +32,8 @@ import topologyImg from "./topology.png";
 
 const VIEWS_BY_AUDIENCE: Record<AudienceMode, ViewName[]> = {
   novice: ["stage"],
-  evaluator: ["stage", "fleet", "architecture", "lineage"],
-  expert: ["stage", "fleet", "architecture", "lineage"],
+  evaluator: ["stage", "fleet", "lineage", "architecture"],
+  expert: ["stage", "fleet", "lineage", "architecture"],
 };
 
 const VIEW_LABELS: Record<ViewName, string> = {
