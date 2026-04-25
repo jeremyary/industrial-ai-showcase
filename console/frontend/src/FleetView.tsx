@@ -69,7 +69,7 @@ function AnomalySparkline({ history }: { history: AnomalyPoint[] }) {
 
   const w = 120;
   const h = 24;
-  const latest = history[history.length - 1].v;
+  const latest = history[history.length - 1]!.v;
   const points = history
     .map((p, i) => {
       const x = (i / Math.max(history.length - 1, 1)) * w;
