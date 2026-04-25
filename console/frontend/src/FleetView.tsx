@@ -169,7 +169,7 @@ function StepDescription({
           <Flex spaceItems={{ default: "spaceItemsMd" }}>
             {step.linkKeys.map((key, i) => (
               <FlexItem key={key}>
-                <ProofLink href={links[key]} label={step.linkLabels[i]} />
+                <ProofLink href={links[key]} label={step.linkLabels[i] ?? key} />
               </FlexItem>
             ))}
           </Flex>
