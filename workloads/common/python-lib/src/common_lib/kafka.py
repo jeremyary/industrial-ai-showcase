@@ -5,7 +5,7 @@ import json
 from collections.abc import Iterator
 from typing import TypeVar
 
-from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
+from confluent_kafka import Consumer, KafkaError, KafkaException, Producer, TopicPartition
 from pydantic import BaseModel
 
 T = TypeVar("T", bound=BaseModel)
@@ -92,6 +92,13 @@ class JsonConsumer[T: BaseModel]:
             event = self.poll(timeout)
             if event is not None:
                 yield event
+
+    def seek_to_end(self, timeout: float = 10.0) -> None:
+        """Skip to the end of all assigned partitions, discarding any backlog."""
+        self._consumer.poll(timeout)
+        for tp in self._consumer.assignment():
+            _, high = self._consumer.get_watermark_offsets(tp)
+            self._consumer.seek(TopicPartition(tp.topic, tp.partition, high))
 
     def close(self) -> None:
         self._consumer.close()

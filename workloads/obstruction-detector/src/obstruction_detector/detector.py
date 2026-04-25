@@ -29,6 +29,9 @@ async def run(
 
     loop = asyncio.get_running_loop()
 
+    await loop.run_in_executor(None, consumer.seek_to_end)
+    log.info("consumer.seeked_to_end")
+
     while True:
         frame = await loop.run_in_executor(None, consumer.poll, 1.0)
         if frame is None:
