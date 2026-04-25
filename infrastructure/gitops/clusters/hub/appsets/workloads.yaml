@@ -29,6 +29,11 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: openshift-gitops
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/template/spec/containers/0/image
       syncPolicy:
         syncOptions:
           - CreateNamespace=true
