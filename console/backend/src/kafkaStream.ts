@@ -17,6 +17,13 @@ export interface FleetMessage {
   payload: unknown;
 }
 
+interface RobotTelemetrySnapshot {
+  robotStatus: "active" | "idle" | "rerouting";
+  anomalyScore: number;
+  policyVersion: string;
+  lastHeartbeat: string;
+}
+
 export class FleetStream extends EventEmitter {
   private readonly kafka: Kafka;
   private consumer: Consumer | undefined;
@@ -24,6 +31,7 @@ export class FleetStream extends EventEmitter {
   private diagLastReportTs = Date.now();
   private readonly DIAG_INTERVAL_MS = 30_000;
   private latestCameraFrame: Buffer | null = null;
+  private robotTelemetry: Record<string, RobotTelemetrySnapshot> = {};
 
   constructor(
     bootstrapServers: string,
@@ -90,6 +98,18 @@ export class FleetStream extends EventEmitter {
             );
             this.diagLastReportTs = now;
           }
+          if ((msg.topic === "fleet.telemetry" || msg.topic === "factory-b.telemetry") && msg.payload && typeof msg.payload === "object") {
+            const p = msg.payload as Record<string, unknown>;
+            const robotId = typeof p["robot_id"] === "string" ? (p["robot_id"] as string) : null;
+            if (robotId) {
+              this.robotTelemetry[robotId] = {
+                robotStatus: typeof p["mission_id"] === "string" ? "active" : "idle",
+                anomalyScore: typeof p["anomaly_score"] === "number" ? (p["anomaly_score"] as number) : 0,
+                policyVersion: typeof p["policy_version"] === "string" ? (p["policy_version"] as string) : "vla-warehouse-v1.3",
+                lastHeartbeat: new Date().toISOString(),
+              };
+            }
+          }
           if (msg.topic.startsWith("warehouse.cameras.") && msg.payload && typeof msg.payload === "object") {
             const p = msg.payload as Record<string, unknown>;
             if (typeof p["frame_b64"] === "string") {
@@ -127,6 +147,10 @@ export class FleetStream extends EventEmitter {
 
   getCameraFrame(): Buffer | null {
     return this.latestCameraFrame;
+  }
+
+  getLatestTelemetry(): Record<string, RobotTelemetrySnapshot> {
+    return { ...this.robotTelemetry };
   }
 
   async stop(): Promise<void> {

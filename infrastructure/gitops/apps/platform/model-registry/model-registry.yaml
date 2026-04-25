@@ -1,0 +1,22 @@
+apiVersion: modelregistry.opendatahub.io/v1alpha1
+kind: ModelRegistry
+metadata:
+  name: model-registry
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  grpc:
+    port: 9090
+  rest:
+    port: 8080
+    serviceRoute: enabled
+  postgres:
+    host: mlflow-db-rw.mlflow.svc.cluster.local
+    port: 5432
+    database: model_registry
+    sslMode: disable
+    username: mlflow
+    passwordSecret:
+      name: mlflow-db-app
+      key: password

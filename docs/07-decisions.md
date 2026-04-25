@@ -618,6 +618,29 @@ A second alternative — iGPU passthrough into the SNO VM via VFIO — was consi
 
 ---
 
+## ADR-028: Warehouse-only for Phase 2; second scene deferred to Phase 4
+
+**Status**: Accepted
+
+**Context**: The persona reviews flagged single-scene as a gap that could pigeonhole the platform as "a warehouse demo." Phase 2 plan item E.1 required researching what NVIDIA SimReady ships publicly beyond the Warehouse Pack — specifically whether a discrete-assembly or process/packaging scene exists that's usable without USD authoring.
+
+**Research findings**:
+
+1. **Isaac Sim 6.0 sample assets** ship one complete industrial environment: `Isaac/Environments/Digital_Twin_Warehouse/small_warehouse_digital_twin.usd`. This is what Phase 1 uses.
+2. **SimReady on Omniverse Exchange** offers individual assets (robots, conveyors, shelving, sensors) but not composed scene packs ready to drop into a digital-twin pipeline. Building a second scene from SimReady primitives would require significant USD composition work — camera placement, navigation meshes, physics tuning, lighting.
+3. **NVIDIA's published industrial reference architectures** (Mega Blueprint, Isaac Sim tutorials) all use the same warehouse scene or minor variations of it. No publicly available assembly-line or packaging-facility scene exists at the fidelity level needed for a believable demo.
+4. **Third-party USD scenes** (TurboSquid, Sketchfab) exist for factories but lack SimReady metadata (physics properties, semantic labels) required by Isaac Sim's simulation pipeline.
+
+**Decision**: Phase 2 commits to warehouse-only. The scene-pack infrastructure already supports multi-scene (ConfigMap-driven scene selection, `generate_overlay.py` parameterized by topology YAML). A second scene is deferred to Phase 4, where it can be authored as part of the vertical-expansion work or adopted if NVIDIA ships additional SimReady environments.
+
+**Consequences**:
+- D.4 (Console scene selector) is skipped for Phase 2 — no second scene to select.
+- The demo narrative addresses the single-scene gap directly: "This warehouse is one vertical. The scene-pack infrastructure is parameterized — a packaging line, an assembly cell, or a customer's own USD scene plugs in through the same topology config."
+- Phase 4 component catalog entries #50 ("Electronics Manufacturing Line") remain planned.
+- The fleet-scale operating-math doc (E.2) can reference multi-scene as a scaling axis without requiring a live second scene.
+
+---
+
 These are decisions we're aware of but not yet making — they're documented in `09-risks-and-open-questions.md` rather than being forced here.
 
 - Physical hardware: do we buy a Unitree G1 for Phase 4 hardware integration?

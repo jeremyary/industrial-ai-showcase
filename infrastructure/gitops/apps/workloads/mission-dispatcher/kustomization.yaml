@@ -9,3 +9,4 @@ resources:
   - configmap.yaml
   - deployment.yaml
   - service.yaml
+  - policy-version.yaml

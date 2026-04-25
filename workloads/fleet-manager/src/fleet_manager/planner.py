@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from common_lib.events import FleetMission, MissionKind, SafetyAlert
+from common_lib.events import FleetMission, MesOrder, MissionKind, SafetyAlert
 
 if TYPE_CHECKING:
     from structlog.stdlib import BoundLogger
@@ -64,6 +64,48 @@ class MissionPlanner:
             route=route,
             alternate=alt,
         )
+
+    def handle_mes_order(
+        self, order: MesOrder, policy_version: str, log: BoundLogger,
+    ) -> FleetMission | None:
+        """Translate an MES production order into a DISPATCH mission.
+
+        Assigns the order to the least-busy robot or a default robot for the
+        target factory. Returns a DISPATCH FleetMission ready for emission.
+        """
+        robot_id = self._pick_robot_for_factory(order.factory)
+        mission = FleetMission(
+            trace_id=order.trace_id,
+            kind=MissionKind.DISPATCH,
+            robot_id=robot_id,
+            policy_version=policy_version,
+            params={
+                "source": "mes",
+                "order_id": str(order.order_id),
+                "material": order.material,
+                "quantity": order.quantity,
+                "route_aisle": order.source_location,
+                "alternate_aisle": order.destination_location,
+                "destination": order.destination_location,
+                "priority": order.priority.value,
+            },
+        )
+        self.dispatch(mission, log)
+        log.info(
+            "mes_order.dispatched",
+            order_id=str(order.order_id),
+            robot_id=robot_id,
+            material=order.material,
+        )
+        return mission
+
+    def _pick_robot_for_factory(self, factory: str) -> str:
+        """Return a robot ID for the given factory. Phase 2: static mapping."""
+        factory_robots = {
+            "factory-a": "fl-07",
+            "factory-b": "fl-08",
+        }
+        return factory_robots.get(factory, "fl-07")
 
     def robot_at_approach_point(
         self, robot_id: str, aisle_id: str, log: BoundLogger,

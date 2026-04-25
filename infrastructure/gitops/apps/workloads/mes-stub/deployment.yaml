@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mes-stub
+  namespace: fleet-ops
+  labels:
+    app: mes-stub
+    phase: phase-2
+  annotations:
+    image.openshift.io/triggers: |-
+      [{"from":{"kind":"ImageStreamTag","name":"mes-stub:latest","namespace":"fleet-ops"},"fieldPath":"spec.template.spec.containers[?(@.name==\"mes-stub\")].image"}]
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: mes-stub
+  template:
+    metadata:
+      labels:
+        app: mes-stub
+    spec:
+      serviceAccountName: mes-stub
+      containers:
+        - name: mes-stub
+          image: mes-stub:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+              name: http
+          env:
+            - name: SERVICE_NAME
+              value: mes-stub
+            - name: LOG_LEVEL
+              value: INFO
+            - name: ENVIRONMENT
+              value: demo
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: fleet-kafka-bootstrap.fleet-ops.svc:9092
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: PLAINTEXT
+            - name: ORDERS_TOPIC
+              value: mes.orders
+            - name: STREAM_INTERVAL_S
+              value: "15"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15

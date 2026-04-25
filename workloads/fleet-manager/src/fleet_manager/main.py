@@ -1,12 +1,14 @@
 # This project was developed with assistance from AI tools.
 """Fleet Manager entrypoint.
 
-Consumes three Kafka topics concurrently:
+Consumes four Kafka topics concurrently:
   - fleet.missions   (DISPATCH from wms-stub → track + await approach-point)
   - fleet.safety.alerts (SafetyAlert from obstruction-detector → replan / clear)
   - fleet.telemetry  (FleetTelemetry from mission-dispatcher → approach-point arrival)
+  - mes.orders       (MesOrder from mes-stub → translate to DISPATCH missions)
 
 Emits to fleet.missions:
+  - DISPATCH when MES orders are translated into missions
   - PROCEED  when approach-point clearance is granted
   - REROUTE  when an obstruction forces replanning
 """
@@ -17,11 +19,12 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
-from common_lib.events import FleetMission, FleetTelemetry, MissionKind, SafetyAlert
+from common_lib.events import FleetMission, FleetTelemetry, MesOrder, MissionKind, SafetyAlert
 from common_lib.kafka import JsonConsumer, JsonProducer
 from common_lib.logging import configure_logging
 from fleet_manager import __version__
 from fleet_manager.planner import MissionPlanner
+from fleet_manager.rollback import should_rollback, trigger_rollback
 from fleet_manager.settings import FleetManagerSettings
 
 if TYPE_CHECKING:
@@ -108,18 +111,55 @@ async def _consume_telemetry(
     missions_topic: str,
     log: "BoundLogger",
 ) -> None:
-    """Consume telemetry and trigger approach-point clearance when a robot arrives."""
+    """Consume telemetry: approach-point clearance + anomaly-triggered rollback."""
     loop = asyncio.get_running_loop()
     while True:
         telem = await loop.run_in_executor(None, consumer.poll, 1.0)
         if telem is None:
             await asyncio.sleep(0)
             continue
+
+        if should_rollback(telem.anomaly_score):
+            await trigger_rollback(
+                factory="factory-a",
+                robot_id=telem.robot_id,
+                anomaly_score=telem.anomaly_score,
+                trace_id=telem.trace_id,
+                log=log,
+            )
+
         near, aisle_id = _near_approach_point(telem.pose, telem.robot_id)
         if near:
             result = planner.robot_at_approach_point(telem.robot_id, aisle_id, log)
             if result is not None:
                 _emit(producer, missions_topic, result, log)
+        consumer.commit()
+
+
+async def _consume_mes_orders(
+    consumer: JsonConsumer[MesOrder],
+    producer: JsonProducer,
+    planner: MissionPlanner,
+    missions_topic: str,
+    policy_version: str,
+    log: "BoundLogger",
+) -> None:
+    """Consume MES orders and translate them into DISPATCH missions."""
+    loop = asyncio.get_running_loop()
+    while True:
+        order = await loop.run_in_executor(None, consumer.poll, 1.0)
+        if order is None:
+            await asyncio.sleep(0)
+            continue
+        log.info(
+            "mes_order.received",
+            order_id=str(order.order_id),
+            material=order.material,
+            factory=order.factory,
+        )
+        mission = planner.handle_mes_order(order, policy_version, log)
+        if mission is not None:
+            _emit(producer, missions_topic, mission, log)
         consumer.commit()
 
 
@@ -150,6 +190,12 @@ async def lifespan(app: FastAPI):
         topic=settings.telemetry_topic,
         model=FleetTelemetry,
     )
+    mes_consumer = JsonConsumer(
+        bootstrap_servers=settings.kafka_bootstrap_servers,
+        group_id=f"{settings.consumer_group_id}-mes",
+        topic=settings.mes_orders_topic,
+        model=MesOrder,
+    )
 
     app.state.settings = settings
     app.state.log = log
@@ -163,6 +209,12 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(
             _consume_telemetry(telemetry_consumer, producer, planner, settings.missions_topic, log)
         ),
+        asyncio.create_task(
+            _consume_mes_orders(
+                mes_consumer, producer, planner, settings.missions_topic,
+                settings.policy_version, log,
+            )
+        ),
     ]
     try:
         yield
@@ -173,6 +225,7 @@ async def lifespan(app: FastAPI):
         missions_consumer.close()
         alerts_consumer.close()
         telemetry_consumer.close()
+        mes_consumer.close()
         producer.flush(timeout=5.0)
         log.info("shutdown")
 

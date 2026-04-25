@@ -1,0 +1,27 @@
+# This project was developed with assistance from AI tools.
+# VLA fine-tuning container: GR00T N1.7-3B on CUDA 12.8.
+FROM docker.io/nvidia/cuda:12.8.0-devel-ubuntu22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git python3.10 python3.10-dev python3-pip \
+    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -s /usr/bin/python3 /usr/local/bin/python
+
+RUN pip install --no-cache-dir --upgrade pip
+
+ARG GROOT_REF=n1.7-release
+RUN git clone --depth 1 --branch ${GROOT_REF} \
+    https://github.com/NVIDIA/Isaac-GR00T.git /workspace/Isaac-GR00T
+WORKDIR /workspace/Isaac-GR00T
+RUN pip install --no-cache-dir torch==2.7.1 torchvision==0.22.1
+RUN pip install --no-cache-dir packaging ninja setuptools wheel psutil
+RUN pip install --no-cache-dir flash-attn==2.7.4.post1 --no-build-isolation
+RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir torchcodec==0.11.1
+
+COPY workloads/vla-training/pyproject.toml /workspace/vla_training/
+COPY workloads/vla-training/src /workspace/vla_training/src
+RUN pip install --no-cache-dir -e "/workspace/vla_training[deploy]"
+
+USER 1001

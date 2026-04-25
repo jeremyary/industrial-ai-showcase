@@ -1,0 +1,119 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: plc-gateway-01
+  namespace: factory-floor
+  labels:
+    app: plc-gateway
+    app.kubernetes.io/part-of: factory-floor
+    vm.kubevirt.io/template: fedora-server-small
+spec:
+  running: true
+  template:
+    metadata:
+      labels:
+        app: plc-gateway
+        kubevirt.io/domain: plc-gateway-01
+    spec:
+      domain:
+        cpu:
+          cores: 2
+        memory:
+          guest: 2Gi
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              masquerade: {}
+      networks:
+        - name: default
+          pod: {}
+      terminationGracePeriodSeconds: 180
+      volumes:
+        - name: rootdisk
+          containerDisk:
+            image: quay.io/containerdisks/fedora:40
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              hostname: plc-gateway-01
+              fqdn: plc-gateway-01.factory-floor.local
+
+              package_update: true
+              packages:
+                - python3
+                - python3-pip
+                - nmap-ncat
+
+              write_files:
+                - path: /opt/plc-gateway/opcua_server.py
+                  permissions: "0755"
+                  content: |
+                    #!/usr/bin/env python3
+                    """Minimal OPC-UA server simulating a PLC gateway for demo."""
+                    import time, random, sys
+                    try:
+                        from opcua import Server
+                    except ImportError:
+                        print("opcua not installed, running health-only mode")
+                        while True:
+                            time.sleep(60)
+
+                    server = Server()
+                    server.set_endpoint("opc.tcp://0.0.0.0:4840/freeopcua/server/")
+                    server.set_server_name("PLC-Gateway-01 OPC-UA")
+
+                    uri = "urn:factory-floor:plc-gateway-01"
+                    ns = server.register_namespace(uri)
+                    obj = server.nodes.objects.add_object(ns, "PLCData")
+
+                    conveyor_speed = obj.add_variable(ns, "ConveyorSpeed", 0.0)
+                    conveyor_speed.set_writable()
+                    arm_position = obj.add_variable(ns, "RobotArmPosition", 0.0)
+                    arm_position.set_writable()
+                    emergency_stop = obj.add_variable(ns, "EmergencyStop", False)
+                    emergency_stop.set_writable()
+                    cycle_count = obj.add_variable(ns, "CycleCount", 0)
+
+                    server.start()
+                    print("OPC-UA server started on opc.tcp://0.0.0.0:4840")
+                    try:
+                        cycles = 0
+                        while True:
+                            conveyor_speed.set_value(round(1.2 + random.gauss(0, 0.05), 3))
+                            arm_position.set_value(round(random.uniform(0, 180), 1))
+                            cycles += 1
+                            cycle_count.set_value(cycles)
+                            time.sleep(2)
+                    except KeyboardInterrupt:
+                        pass
+                    finally:
+                        server.stop()
+
+                - path: /etc/systemd/system/plc-gateway.service
+                  content: |
+                    [Unit]
+                    Description=PLC Gateway OPC-UA Server
+                    After=network-online.target
+                    Wants=network-online.target
+
+                    [Service]
+                    Type=simple
+                    ExecStartPre=/usr/bin/pip3 install opcua
+                    ExecStart=/usr/bin/python3 /opt/plc-gateway/opcua_server.py
+                    Restart=always
+                    RestartSec=10
+
+                    [Install]
+                    WantedBy=multi-user.target
+
+              runcmd:
+                - systemctl daemon-reload
+                - systemctl enable --now plc-gateway.service

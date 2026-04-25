@@ -112,6 +112,41 @@ missions:
     preferred_route: [aisle-3]
     alternate_routes: [aisle-4]
 
+# ---------------------------------------------------------------------------
+# Factory B — second site (Phase 2). Represented by a hub namespace, not a
+# separate cluster. Exercises the multi-site coordination pattern: separate
+# deployments, separate telemetry, ordered GitOps rollout, per-site version
+# tracking. During the demo Factory B is idle-but-healthy; it receives a
+# policy promotion in Segment 3.
+# ---------------------------------------------------------------------------
+
+factory_b:
+  name: factory-b
+  description: Second factory site (packaging/distribution center)
+
+  docks:
+    dock-b1:
+      description: Inbound receiving dock
+      position: [0.0, 0.0, 0.0]
+      orientation_deg: 0
+
+  cameras:
+    cam-dock-b1:
+      description: Overhead camera at receiving dock
+      position: [0.0, 0.0, 6.0]
+      rotation_deg: [60.0, 0.0, 0.0]
+      publishes_topic: factory-b.cameras.dock1
+      frame_library:
+        empty: aisle3_empty.jpg
+      resolution: [1920, 1080]
+      fps: 1
+
+  robots:
+    fl-08:
+      description: Autonomous forklift (Factory B). Phase-2 idle actor.
+      asset_ref: nvidia/Forklift_A01
+      home: dock-b1
+
 scenarios:
   aisle-3-obstruction:
     description: >

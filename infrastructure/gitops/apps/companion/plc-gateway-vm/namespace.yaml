@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: factory-floor
+  labels:
+    app.kubernetes.io/part-of: factory-floor
+    phase: phase-2

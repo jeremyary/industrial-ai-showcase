@@ -1,5 +1,5 @@
 // This project was developed with assistance from AI tools.
-import type { FleetMessage, ScenarioDetail, Topology } from "./types.js";
+import type { FleetMessage, FleetStatus, LineageGraph, ScenarioDetail, Topology } from "./types.js";
 
 export async function fetchTopology(): Promise<Topology> {
   const resp = await fetch("/api/topology");
@@ -33,6 +33,18 @@ export async function executeAction(
     throw new Error(`action failed: ${resp.status} ${text}`);
   }
   return (await resp.json()) as Record<string, unknown>;
+}
+
+export async function fetchFleetStatus(): Promise<FleetStatus> {
+  const resp = await fetch("/api/fleet");
+  if (!resp.ok) throw new Error(`fleet status fetch failed: ${resp.status}`);
+  return (await resp.json()) as FleetStatus;
+}
+
+export async function fetchLineage(): Promise<LineageGraph> {
+  const resp = await fetch("/api/lineage");
+  if (!resp.ok) throw new Error(`lineage fetch failed: ${resp.status}`);
+  return (await resp.json()) as LineageGraph;
 }
 
 export function subscribeEvents(onMessage: (m: FleetMessage) => void): () => void {

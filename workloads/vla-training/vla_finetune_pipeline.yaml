@@ -1,0 +1,485 @@
+# PIPELINE DEFINITION
+# Name: vla-finetune
+# Description: GR00T N1.7-3B VLA fine-tuning for G1 teleop
+# Inputs:
+#    base_model_repo: str [Default: 'nvidia/GR00T-N1.7-3B']
+#    dataset_repo: str [Default: 'nvidia/PhysicalAI-Robotics-GR00T-Teleop-G1']
+#    embodiment_tag: str [Default: 'UNITREE_G1']
+#    global_batch_size: int [Default: 64.0]
+#    max_steps: int [Default: 2000.0]
+#    model_name: str [Default: 'g1-vla-finetune']
+#    model_version: str [Default: 'v1']
+#    num_gpus: int [Default: 1.0]
+#    s3_bucket: str [Default: 'vla-training']
+#    s3_prefix: str [Default: 'vla-finetune']
+components:
+  comp-vla-data-prep-op:
+    executorLabel: exec-vla-data-prep-op
+    inputDefinitions:
+      parameters:
+        base_model_repo:
+          parameterType: STRING
+        dataset_repo:
+          parameterType: STRING
+        s3_prefix:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        s3_prefix_out:
+          parameterType: STRING
+  comp-vla-fine-tune-and-export-op:
+    executorLabel: exec-vla-fine-tune-and-export-op
+    inputDefinitions:
+      parameters:
+        embodiment_tag:
+          parameterType: STRING
+        global_batch_size:
+          parameterType: NUMBER_INTEGER
+        max_steps:
+          parameterType: NUMBER_INTEGER
+        num_gpus:
+          parameterType: NUMBER_INTEGER
+        s3_prefix:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        onnx_s3_prefix:
+          parameterType: STRING
+  comp-vla-register-model-op:
+    executorLabel: exec-vla-register-model-op
+    inputDefinitions:
+      parameters:
+        base_model_repo:
+          parameterType: STRING
+        dataset_repo:
+          parameterType: STRING
+        embodiment_tag:
+          parameterType: STRING
+        max_steps:
+          parameterType: NUMBER_INTEGER
+        model_name:
+          parameterType: STRING
+        model_version:
+          parameterType: STRING
+        s3_bucket:
+          parameterType: STRING
+        s3_prefix:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        registration_result:
+          parameterType: STRING
+  comp-vla-validate-onnx-op:
+    executorLabel: exec-vla-validate-onnx-op
+    inputDefinitions:
+      parameters:
+        s3_prefix:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        validation_result:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-vla-data-prep-op:
+      container:
+        args:
+        - -c
+        - 'set -euo pipefail
+
+          BASE_MODEL_REPO="$1"; DATASET_REPO="$2"; S3_PREFIX="$3"; OUTPUT_FILE="$4"
+
+
+          echo "=== VLA Data Prep ==="
+
+          echo "Base model: ${BASE_MODEL_REPO}"
+
+          echo "Dataset: ${DATASET_REPO}"
+
+          echo "S3 prefix: ${S3_PREFIX}"
+
+          echo "Start time: $(date -u)"
+
+
+          export VLA_BASE_MODEL_REPO="${BASE_MODEL_REPO}"
+
+          export VLA_DATASET_REPO="${DATASET_REPO}"
+
+          export VLA_S3_MODEL_PREFIX="${S3_PREFIX}/base-model"
+
+          export VLA_S3_DATASET_PREFIX="${S3_PREFIX}/dataset"
+
+
+          python -m vla_training.data_prep
+
+
+          printf "%s" "${S3_PREFIX}" > "${OUTPUT_FILE}"
+
+          echo "End time: $(date -u)"
+
+          echo "=== VLA Data Prep: COMPLETE ==="'
+        - --
+        - '{{$.inputs.parameters[''base_model_repo'']}}'
+        - '{{$.inputs.parameters[''dataset_repo'']}}'
+        - '{{$.inputs.parameters[''s3_prefix'']}}'
+        - '{{$.outputs.parameters[''s3_prefix_out''].output_file}}'
+        command:
+        - /bin/bash
+        env:
+        - name: PYTHONUNBUFFERED
+          value: '1'
+        - name: S3_ENDPOINT
+          value: http://minio.mlflow.svc:9000
+        - name: S3_BUCKET
+          value: vla-training
+        image: image-registry.openshift-image-registry.svc:5000/vla-training/vla-training:latest
+        resources:
+          cpuRequest: 4.0
+          memoryRequest: 17.179869184
+          resourceCpuRequest: '4'
+          resourceMemoryRequest: 16Gi
+    exec-vla-fine-tune-and-export-op:
+      container:
+        args:
+        - -c
+        - "set -euo pipefail\nS3_PREFIX=\"$1\"; EMBODIMENT_TAG=\"$2\"\nMAX_STEPS=\"\
+          $3\"; BATCH_SIZE=\"$4\"; NUM_GPUS=\"$5\"; OUTPUT_FILE=\"$6\"\n\necho \"\
+          === VLA Fine-Tuning ===\"\necho \"S3 prefix: ${S3_PREFIX}\"\necho \"Embodiment:\
+          \ ${EMBODIMENT_TAG}\"\necho \"GPUs: ${NUM_GPUS}\"\necho \"Max steps: ${MAX_STEPS}\"\
+          \necho \"Batch size: ${BATCH_SIZE}\"\necho \"Start time: $(date -u)\"\n\n\
+          export VLA_S3_MODEL_PREFIX=\"${S3_PREFIX}/base-model\"\nexport VLA_S3_DATASET_PREFIX=\"\
+          ${S3_PREFIX}/dataset\"\nexport VLA_S3_CHECKPOINT_PREFIX=\"${S3_PREFIX}\"\
+          \nexport VLA_EMBODIMENT_TAG=\"${EMBODIMENT_TAG}\"\nexport DSPA_RUN_ID=\"\
+          ${DSPA_RUN_ID:-unknown}\"\n\npython -m vla_training.fine_tune \\\n  --max-steps\
+          \ \"${MAX_STEPS}\" \\\n  --global-batch-size \"${BATCH_SIZE}\" \\\n  --num-gpus\
+          \ \"${NUM_GPUS}\"\n\nprintf \"%s\" \"${S3_PREFIX}\" > \"${OUTPUT_FILE}\"\
+          \necho \"End time: $(date -u)\"\necho \"=== VLA Fine-Tuning: COMPLETE ===\""
+        - --
+        - '{{$.inputs.parameters[''s3_prefix'']}}'
+        - '{{$.inputs.parameters[''embodiment_tag'']}}'
+        - '{{$.inputs.parameters[''max_steps'']}}'
+        - '{{$.inputs.parameters[''global_batch_size'']}}'
+        - '{{$.inputs.parameters[''num_gpus'']}}'
+        - '{{$.outputs.parameters[''onnx_s3_prefix''].output_file}}'
+        command:
+        - /bin/bash
+        env:
+        - name: PYTHONUNBUFFERED
+          value: '1'
+        - name: S3_ENDPOINT
+          value: http://minio.mlflow.svc:9000
+        - name: S3_BUCKET
+          value: vla-training
+        - name: MLFLOW_TRACKING_URI
+          value: http://mlflow.mlflow.svc:5000
+        - name: MLFLOW_TRACKING_INSECURE_TLS
+          value: 'true'
+        - name: TRITON_CACHE_DIR
+          value: /tmp/.triton
+        - name: HOME
+          value: /tmp
+        image: image-registry.openshift-image-registry.svc:5000/vla-training/vla-training:latest
+        resources:
+          accelerator:
+            count: '1'
+            resourceCount: '1'
+            resourceType: nvidia.com/gpu
+            type: nvidia.com/gpu
+          cpuRequest: 14.0
+          memoryLimit: 118.11160064
+          memoryRequest: 68.719476736
+          resourceCpuRequest: '14'
+          resourceMemoryLimit: 110Gi
+          resourceMemoryRequest: 64Gi
+    exec-vla-register-model-op:
+      container:
+        args:
+        - -c
+        - "set -euo pipefail\nMODEL_NAME=\"$1\"; MODEL_VERSION=\"$2\"; S3_PREFIX=\"\
+          $3\"\nS3_BUCKET=\"$4\"; BASE_MODEL=\"$5\"; DATASET=\"$6\"\nEMBODIMENT=\"\
+          $7\"; STEPS=\"$8\"; OUTPUT_FILE=\"$9\"\nMODEL_URI=\"s3://${S3_BUCKET}/${S3_PREFIX}/onnx\"\
+          \n\nexport VLA_BASE_MODEL_REPO=\"${BASE_MODEL}\"\nexport VLA_DATASET_REPO=\"\
+          ${DATASET}\"\nexport VLA_EMBODIMENT_TAG=\"${EMBODIMENT}\"\nexport VLA_MAX_STEPS=\"\
+          ${STEPS}\"\nexport DSPA_RUN_ID=\"${DSPA_RUN_ID:-unknown}\"\n\necho \"===\
+          \ VLA Model Registration ===\"\necho \"Model: ${MODEL_NAME} v${MODEL_VERSION}\"\
+          \necho \"URI: ${MODEL_URI}\"\necho \"Start time: $(date -u)\"\n\npython\
+          \ -m vla_training.register_model \\\n  --name \"${MODEL_NAME}\" \\\n  --uri\
+          \ \"${MODEL_URI}\" \\\n  --version \"${MODEL_VERSION}\" \\\n  --description\
+          \ \"GR00T N1.7-3B fine-tuned VLA for G1 teleop\"\n\necho \"REGISTERED\"\
+          \ > \"${OUTPUT_FILE}\"\necho \"End time: $(date -u)\"\necho \"=== VLA Model\
+          \ Registration: COMPLETE ===\""
+        - --
+        - '{{$.inputs.parameters[''model_name'']}}'
+        - '{{$.inputs.parameters[''model_version'']}}'
+        - '{{$.inputs.parameters[''s3_prefix'']}}'
+        - '{{$.inputs.parameters[''s3_bucket'']}}'
+        - '{{$.inputs.parameters[''base_model_repo'']}}'
+        - '{{$.inputs.parameters[''dataset_repo'']}}'
+        - '{{$.inputs.parameters[''embodiment_tag'']}}'
+        - '{{$.inputs.parameters[''max_steps'']}}'
+        - '{{$.outputs.parameters[''registration_result''].output_file}}'
+        command:
+        - /bin/bash
+        env:
+        - name: PYTHONUNBUFFERED
+          value: '1'
+        - name: S3_ENDPOINT
+          value: http://minio.mlflow.svc:9000
+        - name: S3_BUCKET
+          value: vla-training
+        - name: MODEL_REGISTRY_ADDRESS
+          value: http://model-registry.redhat-ods-applications.svc:8080
+        image: image-registry.openshift-image-registry.svc:5000/vla-training/vla-training:latest
+        resources:
+          cpuRequest: 1.0
+          memoryRequest: 2.147483648
+          resourceCpuRequest: '1'
+          resourceMemoryRequest: 2Gi
+    exec-vla-validate-onnx-op:
+      container:
+        args:
+        - -c
+        - "set -euo pipefail\nS3_PREFIX=\"$1\"; OUTPUT_FILE=\"$2\"\n\necho \"=== VLA\
+          \ ONNX Validation ===\"\necho \"S3 prefix: ${S3_PREFIX}\"\necho \"Start\
+          \ time: $(date -u)\"\n\npython -m vla_training.validate_onnx \\\n  --checkpoint-prefix\
+          \ \"${S3_PREFIX}\"\n\necho \"PASSED\" > \"${OUTPUT_FILE}\"\necho \"End time:\
+          \ $(date -u)\"\necho \"=== VLA ONNX Validation: COMPLETE ===\""
+        - --
+        - '{{$.inputs.parameters[''s3_prefix'']}}'
+        - '{{$.outputs.parameters[''validation_result''].output_file}}'
+        command:
+        - /bin/bash
+        env:
+        - name: PYTHONUNBUFFERED
+          value: '1'
+        - name: S3_ENDPOINT
+          value: http://minio.mlflow.svc:9000
+        - name: S3_BUCKET
+          value: vla-training
+        image: image-registry.openshift-image-registry.svc:5000/vla-training/vla-training:latest
+        resources:
+          cpuRequest: 2.0
+          memoryRequest: 4.294967296
+          resourceCpuRequest: '2'
+          resourceMemoryRequest: 4Gi
+pipelineInfo:
+  description: GR00T N1.7-3B VLA fine-tuning for G1 teleop
+  name: vla-finetune
+root:
+  dag:
+    tasks:
+      vla-data-prep-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-vla-data-prep-op
+        inputs:
+          parameters:
+            base_model_repo:
+              componentInputParameter: base_model_repo
+            dataset_repo:
+              componentInputParameter: dataset_repo
+            s3_prefix:
+              componentInputParameter: s3_prefix
+        taskInfo:
+          name: vla-data-prep-op
+      vla-fine-tune-and-export-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-vla-fine-tune-and-export-op
+        dependentTasks:
+        - vla-data-prep-op
+        inputs:
+          parameters:
+            embodiment_tag:
+              componentInputParameter: embodiment_tag
+            global_batch_size:
+              componentInputParameter: global_batch_size
+            max_steps:
+              componentInputParameter: max_steps
+            num_gpus:
+              componentInputParameter: num_gpus
+            s3_prefix:
+              taskOutputParameter:
+                outputParameterKey: s3_prefix_out
+                producerTask: vla-data-prep-op
+        taskInfo:
+          name: vla-fine-tune-and-export-op
+      vla-register-model-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-vla-register-model-op
+        dependentTasks:
+        - vla-fine-tune-and-export-op
+        - vla-validate-onnx-op
+        inputs:
+          parameters:
+            base_model_repo:
+              componentInputParameter: base_model_repo
+            dataset_repo:
+              componentInputParameter: dataset_repo
+            embodiment_tag:
+              componentInputParameter: embodiment_tag
+            max_steps:
+              componentInputParameter: max_steps
+            model_name:
+              componentInputParameter: model_name
+            model_version:
+              componentInputParameter: model_version
+            s3_bucket:
+              componentInputParameter: s3_bucket
+            s3_prefix:
+              taskOutputParameter:
+                outputParameterKey: onnx_s3_prefix
+                producerTask: vla-fine-tune-and-export-op
+        taskInfo:
+          name: vla-register-model-op
+      vla-validate-onnx-op:
+        cachingOptions: {}
+        componentRef:
+          name: comp-vla-validate-onnx-op
+        dependentTasks:
+        - vla-fine-tune-and-export-op
+        inputs:
+          parameters:
+            s3_prefix:
+              taskOutputParameter:
+                outputParameterKey: onnx_s3_prefix
+                producerTask: vla-fine-tune-and-export-op
+        taskInfo:
+          name: vla-validate-onnx-op
+  inputDefinitions:
+    parameters:
+      base_model_repo:
+        defaultValue: nvidia/GR00T-N1.7-3B
+        isOptional: true
+        parameterType: STRING
+      dataset_repo:
+        defaultValue: nvidia/PhysicalAI-Robotics-GR00T-Teleop-G1
+        isOptional: true
+        parameterType: STRING
+      embodiment_tag:
+        defaultValue: UNITREE_G1
+        isOptional: true
+        parameterType: STRING
+      global_batch_size:
+        defaultValue: 64.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      max_steps:
+        defaultValue: 2000.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      model_name:
+        defaultValue: g1-vla-finetune
+        isOptional: true
+        parameterType: STRING
+      model_version:
+        defaultValue: v1
+        isOptional: true
+        parameterType: STRING
+      num_gpus:
+        defaultValue: 1.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      s3_bucket:
+        defaultValue: vla-training
+        isOptional: true
+        parameterType: STRING
+      s3_prefix:
+        defaultValue: vla-finetune
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.16.0
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-vla-data-prep-op:
+          imagePullPolicy: Always
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: MINIO_ROOT_USER
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: MINIO_ROOT_PASSWORD
+            optional: false
+            secretName: minio-credentials
+            secretNameParameter:
+              runtimeValue:
+                constant: minio-credentials
+          - keyToEnv:
+            - envVar: HF_TOKEN
+              secretKey: HF_TOKEN
+            optional: false
+            secretName: hf-credentials
+            secretNameParameter:
+              runtimeValue:
+                constant: hf-credentials
+          tolerations:
+          - effect: NoSchedule
+            key: nvidia.com/gpu
+            operator: Exists
+        exec-vla-fine-tune-and-export-op:
+          activeDeadlineSeconds: '7200'
+          imagePullPolicy: Always
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: MINIO_ROOT_USER
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: MINIO_ROOT_PASSWORD
+            optional: false
+            secretName: minio-credentials
+            secretNameParameter:
+              runtimeValue:
+                constant: minio-credentials
+          - keyToEnv:
+            - envVar: HF_TOKEN
+              secretKey: HF_TOKEN
+            optional: false
+            secretName: hf-credentials
+            secretNameParameter:
+              runtimeValue:
+                constant: hf-credentials
+          tolerations:
+          - effect: NoSchedule
+            key: nvidia.com/gpu
+            operator: Exists
+        exec-vla-register-model-op:
+          activeDeadlineSeconds: '600'
+          imagePullPolicy: Always
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: MINIO_ROOT_USER
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: MINIO_ROOT_PASSWORD
+            optional: false
+            secretName: minio-credentials
+            secretNameParameter:
+              runtimeValue:
+                constant: minio-credentials
+          tolerations:
+          - effect: NoSchedule
+            key: nvidia.com/gpu
+            operator: Exists
+        exec-vla-validate-onnx-op:
+          activeDeadlineSeconds: '1800'
+          imagePullPolicy: Always
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: MINIO_ROOT_USER
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: MINIO_ROOT_PASSWORD
+            optional: false
+            secretName: minio-credentials
+            secretNameParameter:
+              runtimeValue:
+                constant: minio-credentials
+          tolerations:
+          - effect: NoSchedule
+            key: nvidia.com/gpu
+            operator: Exists

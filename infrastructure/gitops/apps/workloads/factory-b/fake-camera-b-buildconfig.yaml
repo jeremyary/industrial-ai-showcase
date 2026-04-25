@@ -1,0 +1,26 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: fake-camera-b
+  namespace: factory-b
+  labels:
+    app: fake-camera-b
+    phase: phase-2
+spec:
+  source:
+    type: Git
+    git:
+      uri: https://github.com/jeremyary/industrial-ai-showcase.git
+      ref: main
+    sourceSecret:
+      name: git-source-secret
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: workloads/fake-camera/container/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: fake-camera-b:latest
+  triggers:
+    - type: ConfigChange

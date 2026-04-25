@@ -275,3 +275,51 @@
   padding: 4px 0 !important;
   overflow-y: auto;
 }
+
+/* Architecture view: component cards */
+.showcase-arch-component {
+  background: #ffffff;
+  border: 1px solid var(--showcase--color--border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  min-width: 180px;
+}
+
+/* Fleet view: policy version pill */
+.showcase-policy-pill {
+  display: inline-block;
+  background: var(--showcase--color--charcoal);
+  color: #ffffff;
+  font-family: monospace;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  letter-spacing: 0.05em;
+}
+
+/* Lineage view: node cards */
+.showcase-lineage-node {
+  background: #ffffff;
+  border: 1px solid var(--showcase--color--border);
+  border-left: 4px solid #6A6E73;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+  min-width: 140px;
+}
+
+.showcase-lineage-node:hover {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.showcase-lineage-node.selected {
+  border-color: var(--showcase--color--red);
+  box-shadow: 0 0 0 2px rgba(238, 0, 0, 0.15);
+}
+
+.showcase-lineage-graph {
+  overflow-x: auto;
+  padding: 8px 0;
+}

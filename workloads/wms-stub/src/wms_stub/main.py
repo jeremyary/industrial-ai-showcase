@@ -17,7 +17,7 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from common_lib.events import CameraCommand, FleetMission, MissionKind, SafetyAlert
+from common_lib.events import CameraCommand, FleetMission, FleetTelemetry, MissionKind, SafetyAlert
 from common_lib.kafka import JsonProducer
 from common_lib.logging import configure_logging
 from wms_stub import __version__
@@ -192,6 +192,50 @@ async def reset_scene() -> dict[str, str]:
 
     log.info("scene.reset", trace_id=trace_id)
     return {"status": "ok", "trace_id": trace_id}
+
+
+# ---------------------------------------------------------------------------
+# Anomaly trigger (auto-rollback demo beat, Segment 3)
+# ---------------------------------------------------------------------------
+
+class TriggerAnomalyRequest(BaseModel):
+    anomaly_score: float = Field(default=0.95, ge=0.0, le=1.0)
+    robot_id: str = Field(default="")
+    factory: str = Field(default="factory-a")
+
+
+@app.post("/trigger-anomaly")
+async def trigger_anomaly(req: TriggerAnomalyRequest | None = None) -> dict[str, str]:
+    """Inject a high anomaly-score telemetry event to trigger auto-rollback."""
+    settings: WmsStubSettings = app.state.settings
+    log: "BoundLogger" = app.state.log
+    producer: JsonProducer = app.state.producer
+
+    robot_id = (req.robot_id if req and req.robot_id else settings.default_robot_id)
+    anomaly_score = req.anomaly_score if req else 0.95
+    trace_id = uuid4().hex
+
+    telemetry = FleetTelemetry(
+        trace_id=trace_id,
+        robot_id=robot_id,
+        anomaly_score=anomaly_score,
+        pose={"x": 0.0, "y": 0.0, "z": 0.0},
+    )
+    producer.send(settings.telemetry_topic, key=robot_id, value=telemetry)
+    producer.flush(timeout=2.0)
+
+    log.info(
+        "anomaly.triggered",
+        trace_id=trace_id,
+        robot_id=robot_id,
+        anomaly_score=anomaly_score,
+    )
+    return {
+        "status": "anomaly_triggered",
+        "trace_id": trace_id,
+        "robot_id": robot_id,
+        "anomaly_score": str(anomaly_score),
+    }
 
 
 async def _set_camera_state(target_state: str) -> dict[str, str]:

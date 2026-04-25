@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0,<82.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vla-training"
+version = "0.1.0"
+description = "GR00T N1.7-3B VLA fine-tuning pipeline for Unitree G1 teleop data"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "mlflow>=2.15.0,<3.0",
+    "boto3>=1.34.0,<2.0",
+    "onnx>=1.16.0,<2.0",
+    "onnxruntime>=1.18.0,<2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9.0",
+    "ruff>=0.4.0,<1.0",
+]
+pipeline = [
+    "kfp>=2.14.3,<3.0",
+    "kfp-kubernetes>=1.4.0,<2.0",
+]
+deploy = [
+    "huggingface-hub>=0.23.0,<1.0",
+    "model-registry>=0.3.8,<1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]

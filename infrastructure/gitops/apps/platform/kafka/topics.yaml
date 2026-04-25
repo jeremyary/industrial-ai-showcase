@@ -126,3 +126,110 @@ spec:
     retention.ms: 604800000
     cleanup.policy: delete
     compression.type: producer
+---
+# Phase 2: MES orders — SAP PP/DS-shaped production orders consumed by
+# fleet-manager to drive mission planning alongside camera-triggered events.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: mes-orders
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+    phase: phase-2
+spec:
+  topicName: mes.orders
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    compression.type: producer
+---
+# Phase 2: Factory B topics — separate namespace on the hub representing a
+# second physical site. Topic-per-factory naming for Console Fleet view clarity.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: factory-b-cameras-dock1
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+    factory: factory-b
+spec:
+  topicName: factory-b.cameras.dock1
+  partitions: 1
+  replicas: 3
+  config:
+    max.message.bytes: "1048576"
+    retention.ms: 300000
+    cleanup.policy: delete
+    compression.type: producer
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: factory-b-cameras-commands
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+    factory: factory-b
+spec:
+  topicName: factory-b.cameras.commands
+  partitions: 1
+  replicas: 3
+  config:
+    retention.ms: 300000
+    cleanup.policy: delete
+    compression.type: producer
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: factory-b-missions
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+    factory: factory-b
+spec:
+  topicName: factory-b.missions
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    compression.type: producer
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: factory-b-telemetry
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+    factory: factory-b
+spec:
+  topicName: factory-b.telemetry
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    compression.type: producer
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: factory-b-ops-events
+  namespace: fleet-ops
+  labels:
+    strimzi.io/cluster: fleet
+    factory: factory-b
+spec:
+  topicName: factory-b.ops.events
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    compression.type: producer

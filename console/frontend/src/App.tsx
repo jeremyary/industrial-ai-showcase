@@ -22,15 +22,32 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@patternfly/react-core";
-import type { AudienceMode, ButtonDef, FleetMessage, ScenarioDetail, Topology } from "./types.js";
+import type { AudienceMode, ButtonDef, FleetMessage, ScenarioDetail, Topology, ViewName } from "./types.js";
 import { executeAction, fetchScenarioDetail, fetchScenarios, fetchTopology, subscribeEvents } from "./api.js";
 import { StageCard } from "./Stage.js";
+import { ArchitectureView } from "./ArchitectureView.js";
+import { FleetView } from "./FleetView.js";
+import { LineageView } from "./LineageView.js";
 import topologyImg from "./topology.png";
+
+const VIEWS_BY_AUDIENCE: Record<AudienceMode, ViewName[]> = {
+  novice: ["stage"],
+  evaluator: ["stage", "fleet", "architecture"],
+  expert: ["stage", "fleet", "architecture", "lineage"],
+};
+
+const VIEW_LABELS: Record<ViewName, string> = {
+  stage: "Stage",
+  architecture: "Architecture",
+  fleet: "Fleet",
+  lineage: "Lineage",
+};
 
 const MAX_EVENTS = 200;
 
 export function App(){
   const [audience, setAudience] = useState<AudienceMode>("novice");
+  const [currentView, setCurrentView] = useState<ViewName>("stage");
   const [topology, setTopology] = useState<Topology | null>(null);
   const [scenario, setScenario] = useState<ScenarioDetail | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
@@ -106,73 +123,91 @@ export function App(){
             </MastheadBrand>
           </MastheadMain>
           <MastheadContent>
-            <ToggleGroup aria-label="audience mode">
-              {(["novice", "evaluator", "expert"] as const).map((m) => (
-                <ToggleGroupItem
-                  key={m}
-                  text={m}
-                  buttonId={m}
-                  isSelected={audience === m}
-                  onChange={() => setAudience(m)}
-                />
-              ))}
-            </ToggleGroup>
+            <Flex spaceItems={{ default: "spaceItemsLg" }} alignItems={{ default: "alignItemsCenter" }}>
+              {VIEWS_BY_AUDIENCE[audience].length > 1 && (
+                <FlexItem>
+                  <ToggleGroup aria-label="view selector">
+                    {VIEWS_BY_AUDIENCE[audience].map((v) => (
+                      <ToggleGroupItem
+                        key={v}
+                        text={VIEW_LABELS[v]}
+                        buttonId={`view-${v}`}
+                        isSelected={currentView === v}
+                        onChange={() => setCurrentView(v)}
+                      />
+                    ))}
+                  </ToggleGroup>
+                </FlexItem>
+              )}
+              <FlexItem>
+                <ToggleGroup aria-label="audience mode">
+                  {(["novice", "evaluator", "expert"] as const).map((m) => (
+                    <ToggleGroupItem
+                      key={m}
+                      text={m}
+                      buttonId={m}
+                      isSelected={audience === m}
+                      onChange={() => {
+                        setAudience(m);
+                        if (!VIEWS_BY_AUDIENCE[m].includes(currentView)) {
+                          setCurrentView("stage");
+                        }
+                      }}
+                    />
+                  ))}
+                </ToggleGroup>
+              </FlexItem>
+            </Flex>
           </MastheadContent>
         </Masthead>
       }
     >
       <PageSection>
-        <Flex spaceItems={{ default: "spaceItemsLg" }} alignItems={{ default: "alignItemsStretch" }}>
-          <FlexItem
-            flex={{ default: "flex_1" }}
-            style={{ maxWidth: 320, minWidth: 260, alignSelf: "stretch" }}
-          >
-            <Stack hasGutter style={{ height: "100%" }}>
-              <StackItem>
-                <ScenarioPanel
-                  scenario={scenario}
-                  actionBusy={actionBusy}
-                  lastResult={lastResult}
-                  alertActive={alertActive}
-                  onAction={onAction}
-                />
-              </StackItem>
-              <StackItem isFilled style={{ minHeight: 0, overflow: "hidden" }}>
-                <EventsCard events={events} />
-              </StackItem>
-            </Stack>
-          </FlexItem>
-          <FlexItem flex={{ default: "flex_4" }}>
-            <Stack hasGutter style={{ height: "100%" }}>
-              <StackItem>
-                <Flex spaceItems={{ default: "spaceItemsLg" }} alignItems={{ default: "alignItemsStretch" }}>
-                  <FlexItem flex={{ default: "flex_1" }}>
-                    <TopologyCard />
-                  </FlexItem>
-                  <FlexItem style={{ width: 458, flexShrink: 0 }}>
-                    <CameraFeedCard cameraTick={cameraTick} />
-                  </FlexItem>
-                </Flex>
-              </StackItem>
-              <StackItem isFilled>
-                <StageCard />
-              </StackItem>
-            </Stack>
-          </FlexItem>
-        </Flex>
-      </PageSection>
-
-      {audience !== "novice" && topology?.teasers.length ? (
-        <PageSection>
-          <Flex spaceItems={{ default: "spaceItemsSm" }}>
-            {topology.teasers.map((t) => (
-              <FlexItem key={t}>
-                <Badge>{t}</Badge>
-              </FlexItem>
-            ))}
+        {currentView === "stage" && (
+          <Flex spaceItems={{ default: "spaceItemsLg" }} alignItems={{ default: "alignItemsStretch" }}>
+            <FlexItem
+              flex={{ default: "flex_1" }}
+              style={{ maxWidth: 320, minWidth: 260, alignSelf: "stretch" }}
+            >
+              <Stack hasGutter style={{ height: "100%" }}>
+                <StackItem>
+                  <ScenarioPanel
+                    scenario={scenario}
+                    actionBusy={actionBusy}
+                    lastResult={lastResult}
+                    alertActive={alertActive}
+                    onAction={onAction}
+                  />
+                </StackItem>
+                <StackItem isFilled style={{ minHeight: 0, overflow: "hidden" }}>
+                  <EventsCard events={events} />
+                </StackItem>
+              </Stack>
+            </FlexItem>
+            <FlexItem flex={{ default: "flex_4" }}>
+              <Stack hasGutter style={{ height: "100%" }}>
+                <StackItem>
+                  <Flex spaceItems={{ default: "spaceItemsLg" }} alignItems={{ default: "alignItemsStretch" }}>
+                    <FlexItem flex={{ default: "flex_1" }}>
+                      <TopologyCard />
+                    </FlexItem>
+                    <FlexItem style={{ width: 458, flexShrink: 0 }}>
+                      <CameraFeedCard cameraTick={cameraTick} />
+                    </FlexItem>
+                  </Flex>
+                </StackItem>
+                <StackItem isFilled>
+                  <StageCard />
+                </StackItem>
+              </Stack>
+            </FlexItem>
           </Flex>
-        </PageSection>
-      ) : null}
+        )}
+
+        {currentView === "architecture" && <ArchitectureView />}
+        {currentView === "fleet" && <FleetView events={events} />}
+        {currentView === "lineage" && <LineageView />}
+      </PageSection>
     </Page>
   );
 }
@@ -314,10 +349,11 @@ function EventsCard({ events }: { events: FleetMessage[] }){
 
 function topicColor(topic: string): "blue" | "green" | "orange" | "purple" | "red" | "grey" {
   if (topic === "fleet.events") return "blue";
-  if (topic === "fleet.missions") return "green";
-  if (topic === "fleet.ops.events") return "orange";
-  if (topic === "fleet.telemetry") return "purple";
+  if (topic === "fleet.missions" || topic === "factory-b.missions") return "green";
+  if (topic === "fleet.ops.events" || topic === "factory-b.ops.events") return "orange";
+  if (topic === "fleet.telemetry" || topic === "factory-b.telemetry") return "purple";
   if (topic === "fleet.safety.alerts") return "red";
+  if (topic === "mes.orders") return "blue";
   return "grey";
 }
 
@@ -337,6 +373,10 @@ function extractKind(m: FleetMessage): string {
 
     if (m.topic === "fleet.safety.alerts") {
       return p["obstructed"] === true ? "obstruction" : "clear";
+    }
+
+    if (m.topic === "mes.orders" && typeof p["material"] === "string") {
+      return p["material"] as string;
     }
 
     if (typeof p["robot_id"] === "string") return p["robot_id"] as string;

@@ -42,6 +42,16 @@ spec:
               value: PLAINTEXT
             - name: POLICY_VERSION
               value: vla-warehouse-v1.3
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-token
+                  key: GITHUB_TOKEN
+                  optional: true
+            - name: GITHUB_REPO
+              value: jeremyary/industrial-ai-showcase
+            - name: GITHUB_BRANCH
+              value: main
           resources:
             requests:
               cpu: 100m

@@ -1,0 +1,20 @@
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: github-token
+  namespace: fleet-ops
+spec:
+  vaultAuthRef: vault
+  type: kv-v2
+  mount: kv
+  path: fleet-manager/github
+  destination:
+    name: github-token
+    create: true
+    overwrite: true
+    transformation:
+      excludeRaw: true
+      templates:
+        GITHUB_TOKEN:
+          text: '{{ get .Secrets "token" }}'
+  refreshAfter: 1h

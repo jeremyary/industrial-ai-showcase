@@ -4,3 +4,4 @@ resources:
   - vault-fleet-ops.yaml
   - vault-robot-edge.yaml
   - vault-omni-streaming.yaml
+  - vault-factory-b.yaml

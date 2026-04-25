@@ -10,6 +10,7 @@ class WmsStubSettings(ServiceSettings):
     service_name: str = "wms-stub"
 
     missions_topic: str = "fleet.missions"
+    telemetry_topic: str = "fleet.telemetry"
 
     camera_commands_topic: str = Field(
         default="warehouse.cameras.commands",

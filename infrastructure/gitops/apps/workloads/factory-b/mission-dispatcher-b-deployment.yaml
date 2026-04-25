@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mission-dispatcher-b
+  namespace: factory-b
+  labels:
+    app: mission-dispatcher-b
+    factory: factory-b
+    phase: phase-2
+  annotations:
+    image.openshift.io/triggers: |-
+      [{"from":{"kind":"ImageStreamTag","name":"mission-dispatcher-b:latest","namespace":"factory-b"},"fieldPath":"spec.template.spec.containers[?(@.name==\"mission-dispatcher-b\")].image"}]
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: mission-dispatcher-b
+  template:
+    metadata:
+      labels:
+        app: mission-dispatcher-b
+        factory: factory-b
+    spec:
+      serviceAccountName: mission-dispatcher-b
+      containers:
+        - name: mission-dispatcher-b
+          image: mission-dispatcher-b:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+              name: http
+          env:
+            - name: SERVICE_NAME
+              value: mission-dispatcher-b
+            - name: LOG_LEVEL
+              value: INFO
+            - name: ENVIRONMENT
+              value: demo
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: mission-dispatcher-b-config
+                  key: kafka.bootstrap.servers
+            - name: KAFKA_SECURITY_PROTOCOL
+              valueFrom:
+                configMapKeyRef:
+                  name: mission-dispatcher-b-config
+                  key: kafka.security.protocol
+            - name: VLA_ENDPOINT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: mission-dispatcher-b-config
+                  key: vla.endpoint.url
+            - name: VLA_REQUEST_TIMEOUT_S
+              value: "10"
+            # Factory-B-specific Kafka topics — isolated from Factory A
+            - name: MISSIONS_TOPIC
+              value: factory-b.missions
+            - name: OPS_EVENTS_TOPIC
+              value: factory-b.ops.events
+            - name: TELEMETRY_TOPIC
+              value: factory-b.telemetry
+            - name: CONSUMER_GROUP_ID
+              value: mission-dispatcher-b
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15

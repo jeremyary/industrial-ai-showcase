@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fake-camera-b
+  namespace: factory-b
+  labels:
+    app: fake-camera-b
+    factory: factory-b
+spec:
+  selector:
+    app: fake-camera-b
+  ports:
+    - name: http
+      port: 8085
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP

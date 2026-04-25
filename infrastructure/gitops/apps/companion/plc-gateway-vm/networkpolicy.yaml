@@ -1,0 +1,45 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: plc-gateway-allow-internal
+  namespace: factory-floor
+spec:
+  podSelector:
+    matchLabels:
+      app: plc-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # OPC-UA from factory-floor namespace only
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 4840
+    # SSH from factory-floor namespace
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 22
+    # Monitoring scrape
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-monitoring
+  egress:
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Package installs (cloud-init)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80

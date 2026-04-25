@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fake-camera-b
+  namespace: factory-b
+  labels:
+    app: fake-camera-b
+    factory: factory-b
+    phase: phase-2
+  annotations:
+    image.openshift.io/triggers: |-
+      [{"from":{"kind":"ImageStreamTag","name":"fake-camera-b:latest","namespace":"factory-b"},"fieldPath":"spec.template.spec.containers[?(@.name==\"fake-camera-b\")].image"}]
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: fake-camera-b
+  template:
+    metadata:
+      labels:
+        app: fake-camera-b
+        factory: factory-b
+    spec:
+      serviceAccountName: fake-camera-b
+      containers:
+        - name: fake-camera-b
+          image: fake-camera-b:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8085
+              name: http
+          env:
+            - name: SERVICE_NAME
+              value: fake-camera-b
+            - name: LOG_LEVEL
+              value: INFO
+            # Hub-internal Kafka — no TLS needed (same cluster)
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: fleet-kafka-bootstrap.fleet-ops.svc:9092
+            - name: KAFKA_SECURITY_PROTOCOL
+              value: PLAINTEXT
+            - name: TOPIC
+              value: factory-b.cameras.dock1
+            - name: COMMAND_TOPIC
+              value: factory-b.cameras.commands
+            - name: CAMERA_ID
+              value: cam-dock-b1
+            - name: AISLE_ID
+              value: dock-1
+            - name: PUBLISH_HZ
+              value: "0.7"
+            - name: INITIAL_STATE
+              value: empty
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15

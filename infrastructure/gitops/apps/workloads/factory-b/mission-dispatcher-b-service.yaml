@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mission-dispatcher-b
+  namespace: factory-b
+  labels:
+    app: mission-dispatcher-b
+    factory: factory-b
+spec:
+  selector:
+    app: mission-dispatcher-b
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP

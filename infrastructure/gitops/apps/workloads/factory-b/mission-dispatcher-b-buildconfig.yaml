@@ -1,0 +1,26 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: mission-dispatcher-b
+  namespace: factory-b
+  labels:
+    app: mission-dispatcher-b
+    phase: phase-2
+spec:
+  source:
+    type: Git
+    git:
+      uri: https://github.com/jeremyary/industrial-ai-showcase.git
+      ref: main
+    sourceSecret:
+      name: git-source-secret
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: workloads/mission-dispatcher/container/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: mission-dispatcher-b:latest
+  triggers:
+    - type: ConfigChange

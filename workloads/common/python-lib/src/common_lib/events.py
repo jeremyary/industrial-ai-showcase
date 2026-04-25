@@ -137,6 +137,30 @@ class CameraCommand(BaseModel):
     emitted_at: datetime = Field(default_factory=_now)
 
 
+class MesOrderPriority(str, Enum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class MesOrder(BaseModel):
+    """SAP PP/DS-shaped production order emitted by MES-stub to `mes.orders`."""
+
+    model_config = ConfigDict(frozen=True)
+
+    order_id: UUID = Field(default_factory=uuid4)
+    trace_id: str
+    material: str = Field(description="Material/product code, e.g. 'WIDGET-A-42'.")
+    quantity: int = Field(gt=0)
+    source_location: str = Field(description="Origin dock or zone.")
+    destination_location: str = Field(description="Target dock or zone.")
+    priority: MesOrderPriority = MesOrderPriority.NORMAL
+    factory: str = Field(default="factory-a", description="Target factory site.")
+    due_at: datetime = Field(default_factory=_now)
+    emitted_at: datetime = Field(default_factory=_now)
+
+
 class SafetyAlert(BaseModel):
     """Obstruction / safety alert emitted by obstruction-detector to
     `fleet.safety.alerts`. Fleet Manager consumes these and replans if any

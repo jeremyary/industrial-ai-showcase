@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mission-dispatcher-b-config
+  namespace: factory-b
+  labels:
+    app: mission-dispatcher-b
+    factory: factory-b
+data:
+  # Hub-internal Kafka — Factory B runs on the hub, no TLS needed.
+  kafka.bootstrap.servers: "fleet-kafka-bootstrap.fleet-ops.svc:9092"
+  kafka.security.protocol: "PLAINTEXT"
+  # No VLA endpoint — Factory B is idle during the demo. The dispatcher
+  # stays healthy but doesn't execute manipulation actions.
+  vla.endpoint.url: ""

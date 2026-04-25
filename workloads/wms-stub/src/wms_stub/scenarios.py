@@ -39,7 +39,30 @@ AISLE_3_OBSTRUCTION = Scenario(
 )
 
 
-_CATALOG: dict[str, Scenario] = {AISLE_3_OBSTRUCTION.name: AISLE_3_OBSTRUCTION}
+POLICY_ROLLOUT = Scenario(
+    name="policy-rollout",
+    buttons=(
+        ButtonDef(
+            label="Dispatch Mission",
+            action="dispatch",
+        ),
+        ButtonDef(
+            label="Trigger Anomaly",
+            action="trigger-anomaly",
+            params={"anomaly_score": "0.95"},
+        ),
+        ButtonDef(
+            label="Reset Scene",
+            action="reset-scene",
+        ),
+    ),
+)
+
+
+_CATALOG: dict[str, Scenario] = {
+    AISLE_3_OBSTRUCTION.name: AISLE_3_OBSTRUCTION,
+    POLICY_ROLLOUT.name: POLICY_ROLLOUT,
+}
 
 
 def get_scenario(name: str) -> Scenario:

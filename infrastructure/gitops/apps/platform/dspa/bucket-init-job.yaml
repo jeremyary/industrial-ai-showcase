@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vla-training-bucket-init
+  namespace: vla-training
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 10
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: quay.io/minio/mc:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              until mc alias set local http://minio.mlflow.svc.cluster.local:9000 \
+                "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do
+                echo "waiting for minio endpoint..."
+                sleep 5
+              done
+              mc mb --ignore-existing local/vla-training
+              echo "bucket ready"
+          env:
+            - name: HOME
+              value: /tmp
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: AWS_SECRET_ACCESS_KEY

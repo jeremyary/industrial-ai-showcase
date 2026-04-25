@@ -13,6 +13,7 @@ class FleetManagerSettings(ServiceSettings):
     alerts_topic: str = "fleet.safety.alerts"
     telemetry_topic: str = "fleet.telemetry"
     ops_events_topic: str = "fleet.ops.events"
+    mes_orders_topic: str = "mes.orders"
     consumer_group_id: str = "fleet-manager"
 
     policy_version: str = Field(

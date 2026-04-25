@@ -1,0 +1,8 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: fake-camera-b
+  namespace: factory-b
+  labels:
+    app: fake-camera-b
+    phase: phase-2

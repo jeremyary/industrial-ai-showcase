@@ -26,3 +26,38 @@ export interface ScenarioDetail {
   name: string;
   buttons: ButtonDef[];
 }
+
+export type ViewName = "stage" | "architecture" | "fleet" | "lineage";
+
+export interface FactoryStatus {
+  name: string;
+  namespace: string;
+  policyVersion: string;
+  robotId: string;
+  robotStatus: "active" | "idle" | "rerouting";
+  anomalyScore: number;
+  argoSyncStatus: "synced" | "syncing" | "reverting";
+  lastHeartbeat: string;
+}
+
+export interface FleetStatus {
+  factories: FactoryStatus[];
+}
+
+export interface LineageNode {
+  id: string;
+  type: "dataset" | "pipeline" | "training" | "validation" | "model" | "synthetic";
+  label: string;
+  status: "completed" | "running" | "failed" | "pending";
+  metadata: Record<string, string>;
+}
+
+export interface LineageEdge {
+  source: string;
+  target: string;
+}
+
+export interface LineageGraph {
+  nodes: LineageNode[];
+  edges: LineageEdge[];
+}
