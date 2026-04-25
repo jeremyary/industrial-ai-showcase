@@ -52,6 +52,30 @@ FALLEN_POSES = [
     ((-3.0, 0.0, -3.01), (0.0, 0.0, -52.0)),
 ]
 
+# Route-path visualization — BasisCurves prim drawn on the warehouse floor.
+ROUTE_PATH_PRIM = "/Root/route_display"
+ROUTE_PATH_HEIGHT = 0.02  # 2 cm above floor to avoid z-fighting
+
+ROUTE_WAYPOINTS = {
+    "aisle-3": [
+        (-12.0, 0.0, ROUTE_PATH_HEIGHT),
+        (-10.0, 0.0, ROUTE_PATH_HEIGHT),
+        (13.0, 0.0, ROUTE_PATH_HEIGHT),
+        (15.0, 0.0, ROUTE_PATH_HEIGHT),
+    ],
+    "aisle-4": [
+        (-10.0, 0.0, ROUTE_PATH_HEIGHT),
+        (-10.0, 4.0, ROUTE_PATH_HEIGHT),
+        (13.0, 4.0, ROUTE_PATH_HEIGHT),
+        (15.0, 0.0, ROUTE_PATH_HEIGHT),
+    ],
+}
+
+ROUTE_COLORS = {
+    "dispatch": (0.0, 0.7, 1.0),   # cyan
+    "reroute": (1.0, 0.5, 0.0),    # amber
+}
+
 _CMD_QUEUE: "queue.Queue[tuple]" = queue.Queue(maxsize=64)
 
 # ---- Diagnostics state ------------------------------------------------------
@@ -223,6 +247,92 @@ def _alerts_consumer() -> None:
             pass
 
 
+def _missions_consumer() -> None:
+    """Consume fleet.missions → queue route-path visualisation commands."""
+    try:
+        from confluent_kafka import Consumer
+    except ImportError:
+        carb.log_warn("warehouse_baseline: confluent_kafka unavailable — missions subscriber disabled")
+        return
+
+    c = Consumer(_make_consumer_conf("isaac-sim-twin-missions"))
+    c.subscribe(["fleet.missions"])
+    carb.log_info("warehouse_baseline: missions consumer started")
+
+    while True:
+        msg = c.poll(1.0)
+        if msg is None or msg.error():
+            continue
+        try:
+            data = json.loads(msg.value())
+            kind = data.get("kind", "")
+            route_aisle = data.get("params", {}).get("route_aisle", "")
+            if kind in ("dispatch", "reroute") and route_aisle:
+                try:
+                    _CMD_QUEUE.put_nowait(("path", route_aisle, kind))
+                except queue.Full:
+                    pass
+                print(
+                    f"[baseline_diag] mission received: kind={kind}, route={route_aisle}",
+                    flush=True,
+                )
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Route-path visualisation helpers (called from main Kit thread only)
+# ---------------------------------------------------------------------------
+
+def _create_route_path(stage, route_aisle: str, mission_kind: str) -> None:
+    from pxr import Gf, Sdf, UsdGeom, UsdShade, Vt
+
+    waypoints = ROUTE_WAYPOINTS.get(route_aisle)
+    if not waypoints:
+        return
+
+    color = ROUTE_COLORS.get(mission_kind, ROUTE_COLORS["dispatch"])
+
+    _remove_route_path(stage)
+
+    UsdGeom.Scope.Define(stage, ROUTE_PATH_PRIM)
+
+    curves_path = f"{ROUTE_PATH_PRIM}/curves"
+    curves = UsdGeom.BasisCurves.Define(stage, curves_path)
+    pts = Vt.Vec3fArray([Gf.Vec3f(*p) for p in waypoints])
+    curves.GetPointsAttr().Set(pts)
+    curves.GetCurveVertexCountsAttr().Set(Vt.IntArray([len(waypoints)]))
+    curves.GetTypeAttr().Set(UsdGeom.Tokens.linear)
+    curves.GetWidthsAttr().Set(Vt.FloatArray([0.20] * len(waypoints)))
+    curves.GetWidthsInterpolation().Set(UsdGeom.Tokens.vertex)
+
+    mat_path = f"{ROUTE_PATH_PRIM}/material"
+    mat = UsdShade.Material.Define(stage, mat_path)
+    shader = UsdShade.Shader.Define(stage, f"{mat_path}/shader")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
+        Gf.Vec3f(*color)
+    )
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
+        Gf.Vec3f(0.0, 0.0, 0.0)
+    )
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(1.0)
+    mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    UsdShade.MaterialBindingAPI(curves.GetPrim()).Bind(mat)
+
+    print(
+        f"[baseline_diag] route path: {route_aisle} ({mission_kind}), "
+        f"{len(waypoints)} pts, color={color}",
+        flush=True,
+    )
+
+
+def _remove_route_path(stage) -> None:
+    prim = stage.GetPrimAtPath(ROUTE_PATH_PRIM)
+    if prim and prim.IsValid():
+        stage.RemovePrim(ROUTE_PATH_PRIM)
+
+
 # ---------------------------------------------------------------------------
 # Main-thread prim updater (Kit update tick)
 # ---------------------------------------------------------------------------
@@ -261,6 +371,7 @@ def _apply_updates(_event) -> None:
 
     latest_move = None
     obstruction_cmds = []
+    path_cmds = []
     drained = 0
     while not _CMD_QUEUE.empty():
         try:
@@ -270,6 +381,8 @@ def _apply_updates(_event) -> None:
             break
         if cmd[0] == "move":
             latest_move = cmd
+        elif cmd[0] == "path":
+            path_cmds.append(cmd)
         else:
             obstruction_cmds.append(cmd)
     _diag_queue_drain_total += drained
@@ -351,6 +464,10 @@ def _apply_updates(_event) -> None:
             print(f"[baseline_diag] RESET triggered (reset #{_diag_resets})", flush=True)
             _reset_scene()
 
+    for cmd in path_cmds:
+        _, route_aisle, mission_kind = cmd
+        _create_route_path(stage, route_aisle, mission_kind)
+
     now = time.monotonic()
     if _diag_update_tick % 600 == 0 or (now - _diag_last_report_ts > _DIAG_REPORT_INTERVAL and _diag_last_report_ts > 0):
         _diag_last_report_ts = now
@@ -399,6 +516,8 @@ def _reset_scene() -> None:
     if stage is None:
         print("[baseline_diag] _reset_scene: stage is None — cannot reset", flush=True)
         return
+
+    _remove_route_path(stage)
 
     restored = 0
     for prim_path, mat in _original_xforms.items():
@@ -469,6 +588,7 @@ async def _run() -> None:
 
         threading.Thread(target=_telemetry_consumer, daemon=True, name="twin-telemetry").start()
         threading.Thread(target=_alerts_consumer, daemon=True, name="twin-alerts").start()
+        threading.Thread(target=_missions_consumer, daemon=True, name="twin-missions").start()
 
         global _UPDATE_SUB
         _UPDATE_SUB = (
