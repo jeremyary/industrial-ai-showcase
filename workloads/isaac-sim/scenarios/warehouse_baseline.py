@@ -304,7 +304,7 @@ def _create_route_path(stage, route_aisle: str, mission_kind: str) -> None:
     curves.GetCurveVertexCountsAttr().Set(Vt.IntArray([len(waypoints)]))
     curves.GetTypeAttr().Set(UsdGeom.Tokens.linear)
     curves.GetWidthsAttr().Set(Vt.FloatArray([0.20] * len(waypoints)))
-    curves.GetWidthsInterpolation().Set(UsdGeom.Tokens.vertex)
+    curves.SetWidthsInterpolation(UsdGeom.Tokens.vertex)
 
     mat_path = f"{ROUTE_PATH_PRIM}/material"
     mat = UsdShade.Material.Define(stage, mat_path)
