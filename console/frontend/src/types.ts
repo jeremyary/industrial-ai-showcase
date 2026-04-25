@@ -52,9 +52,15 @@ export interface DemoLinks {
   argoConsole: string;
 }
 
+export interface StatusLogEntry {
+  ts: number;
+  message: string;
+}
+
 export interface FleetStatus {
   demoPhase: string;
   anomalyHistory: AnomalyPoint[];
+  statusLog: StatusLogEntry[];
   links: DemoLinks | null;
   factories: FactoryStatus[];
 }

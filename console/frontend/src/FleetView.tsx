@@ -23,10 +23,11 @@ import type {
   FleetMessage,
   FleetStatus,
   ScenarioDetail,
+  StatusLogEntry,
 } from "./types.js";
 import { executeAction, fetchFleetStatus, fetchScenarioDetail } from "./api.js";
 
-const POLL_INTERVAL = 5000;
+const POLL_INTERVAL = 3000;
 
 interface DemoStep {
   id: string;
@@ -37,6 +38,7 @@ interface DemoStep {
   doneText: string;
   linkKeys: (keyof DemoLinks)[];
   linkLabels: string[];
+  lookFor: string;
 }
 
 const DEMO_STEPS: DemoStep[] = [
@@ -44,49 +46,66 @@ const DEMO_STEPS: DemoStep[] = [
     id: "promote",
     label: "Promote v1.4",
     action: "promote-policy",
-    preText: "Push the new VLA policy version to Factory A via GitOps.",
-    activeText: "Argo CD is syncing the change to fleet-manager. This is a real GitOps deployment.",
-    doneText: "Factory A is now running v1.4.",
+    preText:
+      "Push the new VLA policy version to Factory A via GitOps. This commits a version change to Git and triggers a real Argo CD sync.",
+    activeText:
+      "Deploying — watch the activity log below for real-time progress. The console is committing to Git, then triggering an Argo CD sync.",
+    doneText: "Factory A is now running v1.4. Argo CD sync completed successfully.",
     linkKeys: ["argoFleetManager", "ocpFleetManager"],
     linkLabels: ["Argo CD: fleet-manager", "OpenShift: fleet-manager pods"],
+    lookFor:
+      "In Argo CD, look for the fleet-manager Application — it should show 'Syncing' then 'Synced'. Click into it to see the deployment rolling out with the new POLICY_VERSION env var.",
   },
   {
     id: "anomaly",
     label: "Trigger Anomaly",
     action: "trigger-anomaly",
-    preText: "Inject a high anomaly score to test automatic rollback.",
-    activeText: "Anomaly detected — auto-rollback reverting Factory A to v1.3.",
+    preText:
+      "Inject a high anomaly score to simulate a failing policy. This triggers an automatic rollback via GitOps.",
+    activeText:
+      "Anomaly detected — the system is automatically reverting Factory A to v1.3 via GitOps.",
     doneText: "Factory A rolled back to v1.3 automatically.",
     linkKeys: ["argoFleetManager"],
     linkLabels: ["Argo CD: rollback sync"],
+    lookFor:
+      "In Argo CD, you'll see a second sync as the rollback commits v1.3 back to Git and re-syncs.",
   },
   {
     id: "reset",
     label: "Reset Demo",
     action: "reset-fleet-demo",
-    preText: "Return all systems to baseline.",
-    activeText: "Resetting...",
+    preText: "Return all systems to baseline for the next run.",
+    activeText: "Resetting…",
     doneText: "Demo reset to baseline.",
     linkKeys: [],
     linkLabels: [],
+    lookFor: "",
   },
 ];
 
 function phaseToStepIndex(phase: string): number {
+  if (phase === "promoting") return 0;
   if (phase === "promoted") return 1;
-  if (phase === "anomaly-detected" || phase === "rolled-back") return 2;
+  if (phase === "anomaly-detected" || phase === "rolling-back") return 1;
+  if (phase === "rolled-back") return 2;
   return 0;
 }
 
 function isPhaseTransitioning(phase: string): boolean {
-  return phase === "promoted" || phase === "anomaly-detected";
+  return (
+    phase === "promoting" ||
+    phase === "anomaly-detected" ||
+    phase === "rolling-back"
+  );
 }
 
 function stepVariant(
   stepIdx: number,
   currentIdx: number,
+  transitioning: boolean,
 ): "success" | "info" | "pending" | "danger" {
   if (stepIdx < currentIdx) return "success";
+  if (stepIdx === currentIdx && transitioning) return "info";
   if (stepIdx === currentIdx) return "info";
   return "pending";
 }
@@ -113,6 +132,33 @@ function ProofLink({ href, label }: { href: string; label: string }) {
     >
       {label} ↗
     </a>
+  );
+}
+
+function ActivityLog({ entries }: { entries: StatusLogEntry[] }) {
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [entries.length]);
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="showcase-activity-log">
+      <div className="showcase-activity-log-title">Activity</div>
+      <div className="showcase-activity-log-entries">
+        {entries.map((e, i) => {
+          const time = new Date(e.ts).toLocaleTimeString();
+          return (
+            <div key={i} className="showcase-activity-log-entry">
+              <span className="showcase-activity-log-time">{time}</span>
+              <span>{e.message}</span>
+            </div>
+          );
+        })}
+        <div ref={endRef} />
+      </div>
+    </div>
   );
 }
 
@@ -143,7 +189,7 @@ function StepDescription({
     );
   }
 
-  const showLinks = isTransitioning && links && step.linkKeys.length > 0;
+  const showLinks = links && step.linkKeys.length > 0;
 
   return (
     <div className="showcase-step-guidance">
@@ -161,15 +207,23 @@ function StepDescription({
           {step.label}
         </Button>
       )}
+      {isTransitioning && step.lookFor && (
+        <div className="showcase-look-for">
+          <strong>What to look for:</strong> {step.lookFor}
+        </div>
+      )}
       {showLinks && (
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 12, color: "#6A6E73", marginBottom: 4 }}>
-            Verify it's real:
+            {isTransitioning ? "Open to verify:" : "Will open after action:"}
           </div>
           <Flex spaceItems={{ default: "spaceItemsMd" }}>
             {step.linkKeys.map((key, i) => (
               <FlexItem key={key}>
-                <ProofLink href={links[key]} label={step.linkLabels[i] ?? key} />
+                <ProofLink
+                  href={links[key]}
+                  label={step.linkLabels[i] ?? key}
+                />
               </FlexItem>
             ))}
           </Flex>
@@ -404,7 +458,7 @@ export function FleetView({ events }: { events: FleetMessage[] }) {
                   key={step.id}
                   id={step.id}
                   titleId={`step-${step.id}`}
-                  variant={stepVariant(i, currentStepIdx)}
+                  variant={stepVariant(i, currentStepIdx, transitioning)}
                   isCurrent={i === currentStepIdx}
                   description={
                     <StepDescription
@@ -422,6 +476,9 @@ export function FleetView({ events }: { events: FleetMessage[] }) {
                 </ProgressStep>
               ))}
             </ProgressStepper>
+            {(fleet?.statusLog?.length ?? 0) > 0 && (
+              <ActivityLog entries={fleet!.statusLog} />
+            )}
           </CardBody>
         </Card>
       </StackItem>
@@ -436,7 +493,7 @@ export function FleetView({ events }: { events: FleetMessage[] }) {
             <FlexItem>
               <Card>
                 <CardBody>
-                  <Spinner size="md" /> Loading fleet status...
+                  <Spinner size="md" /> Loading fleet status…
                 </CardBody>
               </Card>
             </FlexItem>

@@ -383,3 +383,50 @@
   background-color: rgba(0, 102, 204, 0.08);
   text-decoration: none;
 }
+
+/* Fleet demo: activity log */
+.showcase-activity-log {
+  margin-top: 16px;
+  border-top: 1px solid var(--showcase--color--border);
+  padding-top: 12px;
+}
+
+.showcase-activity-log-title {
+  font-family: 'Public Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--showcase--color--gray-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.showcase-activity-log-entries {
+  max-height: 160px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--showcase--color--charcoal);
+}
+
+.showcase-activity-log-entry {
+  padding: 2px 0;
+}
+
+.showcase-activity-log-time {
+  color: var(--showcase--color--gray-medium);
+  margin-right: 8px;
+}
+
+/* Fleet demo: "what to look for" guidance */
+.showcase-look-for {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #FFF4E5;
+  border-left: 3px solid #F0AB00;
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--showcase--color--charcoal);
+}

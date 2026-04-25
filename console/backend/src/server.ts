@@ -95,6 +95,7 @@ fastify.get("/api/fleet", async () => {
   return {
     demoPhase: ds.phase,
     anomalyHistory: ds.anomalyHistory,
+    statusLog: ds.statusLog,
     links,
     factories: [
       {

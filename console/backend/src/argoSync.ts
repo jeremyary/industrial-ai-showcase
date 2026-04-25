@@ -12,6 +12,10 @@ interface GitHubFileResponse {
   content: string;
 }
 
+interface GitHubCommitResponse {
+  commit: { html_url: string };
+}
+
 export class ArgoSync {
   private readonly k8sApiBase: string;
   private readonly k8sToken: string;
@@ -29,7 +33,7 @@ export class ArgoSync {
       );
     } catch {
       this.k8sToken = "";
-      this.log.warn({}, "argoSync: no SA token found — k8s API calls will fail");
+      this.log.warn({}, "argoSync: no SA token — k8s API calls will fail");
     }
   }
 
@@ -37,11 +41,10 @@ export class ArgoSync {
     return this.githubToken.length > 0;
   }
 
-  async updatePolicyVersion(version: string): Promise<boolean> {
-    if (!this.enabled) {
-      this.log.warn({}, "argoSync: no GitHub token — skipping real sync");
-      return false;
-    }
+  async commitPolicyVersion(
+    version: string,
+  ): Promise<{ ok: boolean; commitUrl?: string }> {
+    if (!this.enabled) return { ok: false };
 
     try {
       const file = await this.getFileFromGitHub(FLEET_MANAGER_DEPLOY_PATH);
@@ -53,24 +56,63 @@ export class ArgoSync {
 
       if (updated === content) {
         this.log.info({ version }, "argoSync: POLICY_VERSION already set");
-        return true;
+        return { ok: true };
       }
 
-      await this.putFileToGitHub(
+      const commitUrl = await this.putFileToGitHub(
         FLEET_MANAGER_DEPLOY_PATH,
         updated,
         file.sha,
         `chore: promote policy to ${version}`,
       );
-      this.log.info({ version }, "argoSync: committed policy version change");
+      this.log.info({ version, commitUrl }, "argoSync: committed");
+      return { ok: true, commitUrl };
+    } catch (err) {
+      this.log.error(
+        { err: (err as Error).message },
+        "argoSync: failed to commit policy version",
+      );
+      return { ok: false };
+    }
+  }
 
-      await this.triggerArgoRefresh();
-      this.log.info({}, "argoSync: triggered Argo refresh");
+  async triggerSync(): Promise<boolean> {
+    try {
+      const body = JSON.stringify({
+        operation: {
+          initiatedBy: { username: "showcase-console" },
+          sync: {
+            syncOptions: ["CreateNamespace=true", "ServerSideApply=true"],
+          },
+        },
+      });
+
+      const resp = await fetch(
+        `${this.k8sApiBase}/apis/argoproj.io/v1alpha1/namespaces/${ARGO_NAMESPACE}/applications/${ARGO_APP_NAME}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${this.k8sToken}`,
+            "Content-Type": "application/merge-patch+json",
+          },
+          body,
+        },
+      );
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        this.log.warn(
+          { status: resp.status, body: text.slice(0, 200) },
+          "argoSync: sync trigger failed",
+        );
+        return false;
+      }
+      this.log.info({}, "argoSync: sync triggered");
       return true;
     } catch (err) {
       this.log.error(
         { err: (err as Error).message },
-        "argoSync: failed to update policy version",
+        "argoSync: sync trigger error",
       );
       return false;
     }
@@ -79,6 +121,7 @@ export class ArgoSync {
   async getArgoSyncStatus(): Promise<{
     syncStatus: string;
     healthStatus: string;
+    operationPhase: string;
   }> {
     try {
       const resp = await fetch(
@@ -88,26 +131,39 @@ export class ArgoSync {
 
       if (!resp.ok) {
         const text = await resp.text();
-        this.log.warn({ status: resp.status, body: text.slice(0, 200) }, "argoSync: k8s API error");
-        return { syncStatus: "Unknown", healthStatus: "Unknown" };
+        this.log.warn(
+          { status: resp.status, body: text.slice(0, 200) },
+          "argoSync: k8s API error",
+        );
+        return {
+          syncStatus: "Unknown",
+          healthStatus: "Unknown",
+          operationPhase: "Unknown",
+        };
       }
 
       const app = (await resp.json()) as {
         status?: {
           sync?: { status?: string };
           health?: { status?: string };
+          operationState?: { phase?: string };
         };
       };
       return {
         syncStatus: app.status?.sync?.status ?? "Unknown",
         healthStatus: app.status?.health?.status ?? "Unknown",
+        operationPhase: app.status?.operationState?.phase ?? "Unknown",
       };
     } catch (err) {
       this.log.error(
         { err: (err as Error).message },
         "argoSync: failed to get sync status",
       );
-      return { syncStatus: "Unknown", healthStatus: "Unknown" };
+      return {
+        syncStatus: "Unknown",
+        healthStatus: "Unknown",
+        operationPhase: "Unknown",
+      };
     }
   }
 
@@ -122,7 +178,9 @@ export class ArgoSync {
       },
     );
     if (!resp.ok) {
-      throw new Error(`GitHub GET ${path}: ${resp.status} ${await resp.text()}`);
+      throw new Error(
+        `GitHub GET ${path}: ${resp.status} ${await resp.text()}`,
+      );
     }
     return (await resp.json()) as GitHubFileResponse;
   }
@@ -132,7 +190,7 @@ export class ArgoSync {
     content: string,
     sha: string,
     message: string,
-  ): Promise<void> {
+  ): Promise<string> {
     const resp = await fetch(
       `https://api.github.com/repos/${this.githubRepo}/contents/${path}`,
       {
@@ -151,37 +209,11 @@ export class ArgoSync {
       },
     );
     if (!resp.ok) {
-      throw new Error(`GitHub PUT ${path}: ${resp.status} ${await resp.text()}`);
-    }
-  }
-
-  private async triggerArgoRefresh(): Promise<void> {
-    const body = JSON.stringify({
-      metadata: {
-        annotations: {
-          "argocd.argoproj.io/refresh": "hard",
-        },
-      },
-    });
-
-    const resp = await fetch(
-      `${this.k8sApiBase}/apis/argoproj.io/v1alpha1/namespaces/${ARGO_NAMESPACE}/applications/${ARGO_APP_NAME}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${this.k8sToken}`,
-          "Content-Type": "application/merge-patch+json",
-        },
-        body,
-      },
-    );
-
-    if (!resp.ok) {
-      const text = await resp.text();
-      this.log.warn(
-        { status: resp.status, body: text.slice(0, 200) },
-        "argoSync: refresh patch failed — Argo will still detect drift on its poll interval",
+      throw new Error(
+        `GitHub PUT ${path}: ${resp.status} ${await resp.text()}`,
       );
     }
+    const data = (await resp.json()) as GitHubCommitResponse;
+    return data.commit?.html_url ?? "";
   }
 }
