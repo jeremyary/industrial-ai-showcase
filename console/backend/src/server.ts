@@ -83,9 +83,19 @@ fastify.get("/api/fleet", async () => {
   const ds = stream.demoState;
   const fa = ds.factories["factory-a"];
   const fb = ds.factories["factory-b"];
+  const d = config.clusterAppsDomain;
+  const links = d
+    ? {
+        argoFleetManager: `https://openshift-gitops-server-openshift-gitops.${d}/applications/openshift-gitops/workloads-fleet-manager`,
+        ocpFleetManager: `https://console-openshift-console.${d}/k8s/ns/fleet-ops/apps~v1~Deployment/fleet-manager`,
+        rhoaiDashboard: `https://rhods-dashboard-redhat-ods-applications.${d}`,
+        argoConsole: `https://openshift-gitops-server-openshift-gitops.${d}/applications/openshift-gitops/workloads-console`,
+      }
+    : null;
   return {
     demoPhase: ds.phase,
     anomalyHistory: ds.anomalyHistory,
+    links,
     factories: [
       {
         name: "Factory A",

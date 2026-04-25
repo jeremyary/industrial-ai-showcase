@@ -45,9 +45,17 @@ export interface AnomalyPoint {
   v: number;
 }
 
+export interface DemoLinks {
+  argoFleetManager: string;
+  ocpFleetManager: string;
+  rhoaiDashboard: string;
+  argoConsole: string;
+}
+
 export interface FleetStatus {
   demoPhase: string;
   anomalyHistory: AnomalyPoint[];
+  links: DemoLinks | null;
   factories: FactoryStatus[];
 }
 

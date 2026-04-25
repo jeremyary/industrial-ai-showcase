@@ -357,3 +357,29 @@
 .showcase-argo-pulse {
   animation: showcase-argo-pulse-anim 1s ease-in-out infinite;
 }
+
+/* Fleet demo: step guidance text */
+.showcase-step-guidance {
+  font-size: 13px;
+  color: var(--showcase--color--gray-medium);
+  margin-top: 4px;
+  max-width: 400px;
+}
+
+/* Fleet demo: proof-point links */
+.showcase-proof-link {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0066CC;
+  text-decoration: none;
+  padding: 2px 8px;
+  border: 1px solid #0066CC;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.showcase-proof-link:hover {
+  background-color: rgba(0, 102, 204, 0.08);
+  text-decoration: none;
+}

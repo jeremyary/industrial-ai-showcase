@@ -14,6 +14,7 @@ export interface AppConfig {
   turnCredential: string;
   githubToken: string;
   githubRepo: string;
+  clusterAppsDomain: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -37,5 +38,6 @@ export function loadConfig(): AppConfig {
     turnCredential: process.env.TURN_CREDENTIAL ?? "",
     githubToken: process.env.GITHUB_TOKEN ?? "",
     githubRepo: process.env.GITHUB_REPO ?? "jeremyary/industrial-ai-showcase",
+    clusterAppsDomain: process.env.CLUSTER_APPS_DOMAIN ?? "",
   };
 }

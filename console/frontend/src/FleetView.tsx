@@ -18,6 +18,7 @@ import {
 import type {
   AnomalyPoint,
   ButtonDef,
+  DemoLinks,
   FactoryStatus,
   FleetMessage,
   FleetStatus,
@@ -27,16 +28,58 @@ import { executeAction, fetchFleetStatus, fetchScenarioDetail } from "./api.js";
 
 const POLL_INTERVAL = 5000;
 
-const DEMO_STEPS = [
-  { id: "promote", label: "Promote v1.4", action: "promote-policy" },
-  { id: "anomaly", label: "Trigger Anomaly", action: "trigger-anomaly" },
-  { id: "reset", label: "Reset Demo", action: "reset-fleet-demo" },
+interface DemoStep {
+  id: string;
+  label: string;
+  action: string;
+  preText: string;
+  activeText: string;
+  doneText: string;
+  linkKeys: (keyof DemoLinks)[];
+  linkLabels: string[];
+}
+
+const DEMO_STEPS: DemoStep[] = [
+  {
+    id: "promote",
+    label: "Promote v1.4",
+    action: "promote-policy",
+    preText: "Push the new VLA policy version to Factory A via GitOps.",
+    activeText: "Argo CD is syncing the change to fleet-manager. This is a real GitOps deployment.",
+    doneText: "Factory A is now running v1.4.",
+    linkKeys: ["argoFleetManager", "ocpFleetManager"],
+    linkLabels: ["Argo CD: fleet-manager", "OpenShift: fleet-manager pods"],
+  },
+  {
+    id: "anomaly",
+    label: "Trigger Anomaly",
+    action: "trigger-anomaly",
+    preText: "Inject a high anomaly score to test automatic rollback.",
+    activeText: "Anomaly detected — auto-rollback reverting Factory A to v1.3.",
+    doneText: "Factory A rolled back to v1.3 automatically.",
+    linkKeys: ["argoFleetManager"],
+    linkLabels: ["Argo CD: rollback sync"],
+  },
+  {
+    id: "reset",
+    label: "Reset Demo",
+    action: "reset-fleet-demo",
+    preText: "Return all systems to baseline.",
+    activeText: "Resetting...",
+    doneText: "Demo reset to baseline.",
+    linkKeys: [],
+    linkLabels: [],
+  },
 ];
 
 function phaseToStepIndex(phase: string): number {
   if (phase === "promoted") return 1;
   if (phase === "anomaly-detected" || phase === "rolled-back") return 2;
   return 0;
+}
+
+function isPhaseTransitioning(phase: string): boolean {
+  return phase === "promoted" || phase === "anomaly-detected";
 }
 
 function stepVariant(
@@ -60,9 +103,86 @@ function statusColor(
   return "grey";
 }
 
+function ProofLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="showcase-proof-link"
+    >
+      {label} ↗
+    </a>
+  );
+}
+
+function StepDescription({
+  step,
+  isActive,
+  isDone,
+  isBusy,
+  isTransitioning,
+  links,
+  onAction,
+}: {
+  step: DemoStep;
+  isActive: boolean;
+  isDone: boolean;
+  isBusy: boolean;
+  isTransitioning: boolean;
+  links: DemoLinks | null;
+  onAction: () => void;
+}) {
+  if (!isActive && !isDone) return null;
+
+  if (isDone) {
+    return (
+      <div className="showcase-step-guidance">
+        <span style={{ color: "#3E8635" }}>{step.doneText}</span>
+      </div>
+    );
+  }
+
+  const showLinks = isTransitioning && links && step.linkKeys.length > 0;
+
+  return (
+    <div className="showcase-step-guidance">
+      <div style={{ marginBottom: 8 }}>
+        {isTransitioning ? step.activeText : step.preText}
+      </div>
+      {!isTransitioning && (
+        <Button
+          variant="primary"
+          size="sm"
+          isLoading={isBusy}
+          isDisabled={isBusy}
+          onClick={onAction}
+        >
+          {step.label}
+        </Button>
+      )}
+      {showLinks && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: "#6A6E73", marginBottom: 4 }}>
+            Verify it's real:
+          </div>
+          <Flex spaceItems={{ default: "spaceItemsMd" }}>
+            {step.linkKeys.map((key, i) => (
+              <FlexItem key={key}>
+                <ProofLink href={links[key]} label={step.linkLabels[i]} />
+              </FlexItem>
+            ))}
+          </Flex>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AnomalyBar({ score }: { score: number }) {
   const pct = Math.min(score * 100, 100);
-  const color = score >= 0.85 ? "#A30000" : score >= 0.5 ? "#F0AB00" : "#3E8635";
+  const color =
+    score >= 0.85 ? "#A30000" : score >= 0.5 ? "#F0AB00" : "#3E8635";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div
@@ -97,7 +217,14 @@ function AnomalySparkline({ history }: { history: AnomalyPoint[] }) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <svg width={w} height={h} style={{ display: "block" }}>
-          <line x1={0} y1={h - 4} x2={w} y2={h - 4} stroke="#E0E0E0" strokeWidth={1} />
+          <line
+            x1={0}
+            y1={h - 4}
+            x2={w}
+            y2={h - 4}
+            stroke="#E0E0E0"
+            strokeWidth={1}
+          />
         </svg>
         <span style={{ fontSize: 12, color: "#6A6E73" }}>baseline</span>
       </div>
@@ -113,18 +240,22 @@ function AnomalySparkline({ history }: { history: AnomalyPoint[] }) {
     })
     .join(" ");
 
-  const color = latest >= 0.85 ? "#A30000" : latest >= 0.5 ? "#F0AB00" : "#3E8635";
+  const color =
+    latest >= 0.85 ? "#A30000" : latest >= 0.5 ? "#F0AB00" : "#3E8635";
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <svg width={w} height={h} style={{ display: "block" }}>
-        <line x1={0} y1={h - 4} x2={w} y2={h - 4} stroke="#E0E0E0" strokeWidth={1} strokeDasharray="4 4" />
-        <polyline
-          points={points}
-          fill="none"
-          stroke={color}
-          strokeWidth={2}
+        <line
+          x1={0}
+          y1={h - 4}
+          x2={w}
+          y2={h - 4}
+          stroke="#E0E0E0"
+          strokeWidth={1}
+          strokeDasharray="4 4"
         />
+        <polyline points={points} fill="none" stroke={color} strokeWidth={2} />
       </svg>
       <span style={{ fontSize: 13, color, fontWeight: 600 }}>
         {latest.toFixed(2)}
@@ -151,7 +282,8 @@ function FactoryPanel({ factory }: { factory: FactoryStatus }) {
   }, [factory.policyVersion]);
 
   const argoClass =
-    factory.argoSyncStatus === "syncing" || factory.argoSyncStatus === "reverting"
+    factory.argoSyncStatus === "syncing" ||
+    factory.argoSyncStatus === "reverting"
       ? "showcase-argo-pulse"
       : "";
 
@@ -254,14 +386,16 @@ export function FleetView({ events }: { events: FleetMessage[] }) {
     [scenario, refresh],
   );
 
-  const currentStepIdx = phaseToStepIndex(fleet?.demoPhase ?? "idle");
+  const demoPhase = fleet?.demoPhase ?? "idle";
+  const currentStepIdx = phaseToStepIndex(demoPhase);
+  const transitioning = isPhaseTransitioning(demoPhase);
 
   return (
     <Stack hasGutter>
       <StackItem>
         <Card>
           <CardHeader>
-            <CardTitle>Fleet Demo</CardTitle>
+            <CardTitle>Fleet Demo — Policy Promotion & Auto-Rollback</CardTitle>
           </CardHeader>
           <CardBody>
             <ProgressStepper>
@@ -271,19 +405,17 @@ export function FleetView({ events }: { events: FleetMessage[] }) {
                   id={step.id}
                   titleId={`step-${step.id}`}
                   variant={stepVariant(i, currentStepIdx)}
+                  isCurrent={i === currentStepIdx}
                   description={
-                    i === currentStepIdx ? (
-                      <Button
-                        variant="link"
-                        isInline
-                        isLoading={actionBusy === step.action}
-                        isDisabled={actionBusy !== null}
-                        onClick={() => void onStepAction(step.action)}
-                        style={{ fontSize: 13 }}
-                      >
-                        {step.label}
-                      </Button>
-                    ) : undefined
+                    <StepDescription
+                      step={step}
+                      isActive={i === currentStepIdx}
+                      isDone={i < currentStepIdx}
+                      isBusy={actionBusy === step.action}
+                      isTransitioning={i === currentStepIdx && transitioning}
+                      links={fleet?.links ?? null}
+                      onAction={() => void onStepAction(step.action)}
+                    />
                   }
                 >
                   {step.label}
