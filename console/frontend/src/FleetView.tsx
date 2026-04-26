@@ -16,7 +16,6 @@ import {
   StackItem,
 } from "@patternfly/react-core";
 import type {
-  AnomalyPoint,
   ArgoAppStatus,
   ArgoResourceStatus,
   ButtonDef,
@@ -43,8 +42,6 @@ interface DemoStep {
   preText: string;
   activeText: string;
   doneText: string;
-  linkKeys: (keyof DemoLinks)[];
-  linkLabels: string[];
   lookFor: string;
 }
 
@@ -59,8 +56,6 @@ const DEMO_STEPS: DemoStep[] = [
       "Deploying — watch the activity log and Argo sync panel below for real-time progress.",
     doneText:
       "Factory A is now running v1.4. Argo CD sync completed successfully.",
-    linkKeys: ["argoFleetManager", "ocpFleetManager"],
-    linkLabels: ["Argo CD: fleet-manager", "OpenShift: fleet-manager pods"],
     lookFor:
       "Watch the Argo Sync Status panel below — you'll see the Deployment resource go from Synced → OutOfSync → Synced as the new policy version rolls out.",
   },
@@ -73,8 +68,6 @@ const DEMO_STEPS: DemoStep[] = [
     activeText:
       "Anomaly detected — the system is automatically reverting Factory A to v1.3 via GitOps.",
     doneText: "Factory A rolled back to v1.3 automatically.",
-    linkKeys: ["argoFleetManager"],
-    linkLabels: ["Argo CD: rollback sync"],
     lookFor:
       "Watch the Argo panel — a second sync cycle will appear as the rollback commits v1.3 back to Git.",
   },
@@ -85,8 +78,6 @@ const DEMO_STEPS: DemoStep[] = [
     preText: "Return all systems to baseline for the next run.",
     activeText: "Resetting…",
     doneText: "Demo reset to baseline.",
-    linkKeys: [],
-    linkLabels: [],
     lookFor: "",
   },
 ];
@@ -176,7 +167,6 @@ function StepDescription({
   isDone,
   isBusy,
   isTransitioning,
-  links,
   onAction,
 }: {
   step: DemoStep;
@@ -184,7 +174,6 @@ function StepDescription({
   isDone: boolean;
   isBusy: boolean;
   isTransitioning: boolean;
-  links: DemoLinks | null;
   onAction: () => void;
 }) {
   if (!isActive && !isDone) return null;
@@ -197,13 +186,16 @@ function StepDescription({
     );
   }
 
-  const showLinks = links && step.linkKeys.length > 0;
-
   return (
     <div className="showcase-step-guidance">
       <div style={{ marginBottom: 8 }}>
         {isTransitioning ? step.activeText : step.preText}
       </div>
+      {step.lookFor && (
+        <div className="showcase-look-for">
+          <strong>What to look for:</strong> {step.lookFor}
+        </div>
+      )}
       {!isTransitioning && (
         <Button
           variant="primary"
@@ -211,31 +203,10 @@ function StepDescription({
           isLoading={isBusy}
           isDisabled={isBusy}
           onClick={onAction}
+          style={{ marginTop: 8 }}
         >
           {step.label}
         </Button>
-      )}
-      {isTransitioning && step.lookFor && (
-        <div className="showcase-look-for">
-          <strong>What to look for:</strong> {step.lookFor}
-        </div>
-      )}
-      {showLinks && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 12, color: "#6A6E73", marginBottom: 4 }}>
-            {isTransitioning ? "Open to verify:" : "Will open after action:"}
-          </div>
-          <Flex spaceItems={{ default: "spaceItemsMd" }}>
-            {step.linkKeys.map((key, i) => (
-              <FlexItem key={key}>
-                <ProofLink
-                  href={links[key]}
-                  label={step.linkLabels[i] ?? key}
-                />
-              </FlexItem>
-            ))}
-          </Flex>
-        </div>
       )}
     </div>
   );
@@ -268,61 +239,6 @@ function AnomalyBar({ score }: { score: number }) {
       </div>
       <span style={{ fontSize: 12, color: "#6A6E73" }}>
         {score.toFixed(2)}
-      </span>
-    </div>
-  );
-}
-
-function AnomalySparkline({ history }: { history: AnomalyPoint[] }) {
-  const w = 240;
-  const h = 40;
-
-  if (history.length === 0) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <svg width={w} height={h} style={{ display: "block" }}>
-          <line
-            x1={0}
-            y1={h - 4}
-            x2={w}
-            y2={h - 4}
-            stroke="#E0E0E0"
-            strokeWidth={1}
-          />
-        </svg>
-        <span style={{ fontSize: 12, color: "#6A6E73" }}>baseline</span>
-      </div>
-    );
-  }
-
-  const latest = history[history.length - 1]!.v;
-  const points = history
-    .map((p, i) => {
-      const x = (i / Math.max(history.length - 1, 1)) * w;
-      const y = h - p.v * h;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  const color =
-    latest >= 0.85 ? "#A30000" : latest >= 0.5 ? "#F0AB00" : "#3E8635";
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <svg width={w} height={h} style={{ display: "block" }}>
-        <line
-          x1={0}
-          y1={h - 4}
-          x2={w}
-          y2={h - 4}
-          stroke="#E0E0E0"
-          strokeWidth={1}
-          strokeDasharray="4 4"
-        />
-        <polyline points={points} fill="none" stroke={color} strokeWidth={2} />
-      </svg>
-      <span style={{ fontSize: 13, color, fontWeight: 600 }}>
-        {latest.toFixed(2)}
       </span>
     </div>
   );
@@ -422,7 +338,11 @@ function ArgoSyncPanel({
             {rev && (
               <FlexItem>
                 <span
-                  style={{ fontFamily: "monospace", fontSize: 12, color: "#6A6E73" }}
+                  style={{
+                    fontFamily: "monospace",
+                    fontSize: 12,
+                    color: "#6A6E73",
+                  }}
                 >
                   {rev}
                 </span>
@@ -435,14 +355,26 @@ function ArgoSyncPanel({
                 </span>
               </FlexItem>
             )}
-            {links?.argoFleetManager && (
-              <FlexItem align={{ default: "alignRight" }}>
-                <ProofLink
-                  href={links.argoFleetManager}
-                  label="Open in Argo CD"
-                />
-              </FlexItem>
-            )}
+            <FlexItem align={{ default: "alignRight" }}>
+              <Flex spaceItems={{ default: "spaceItemsSm" }}>
+                {links?.argoFleetManager && (
+                  <FlexItem>
+                    <ProofLink
+                      href={links.argoFleetManager}
+                      label="Open in Argo CD"
+                    />
+                  </FlexItem>
+                )}
+                {links?.ocpFleetManager && (
+                  <FlexItem>
+                    <ProofLink
+                      href={links.ocpFleetManager}
+                      label="fleet-manager pods"
+                    />
+                  </FlexItem>
+                )}
+              </Flex>
+            </FlexItem>
           </Flex>
         </CardTitle>
       </CardHeader>
@@ -608,7 +540,6 @@ export function FleetView({ events }: { events: FleetMessage[] }) {
                       isDone={i < currentStepIdx}
                       isBusy={actionBusy === step.action}
                       isTransitioning={i === currentStepIdx && transitioning}
-                      links={fleet?.links ?? null}
                       onAction={() => void onStepAction(step.action)}
                     />
                   }
@@ -645,19 +576,6 @@ export function FleetView({ events }: { events: FleetMessage[] }) {
       <StackItem>
         <ArgoSyncPanel argo={argo} links={fleet?.links ?? null} />
       </StackItem>
-
-      {fleet && fleet.anomalyHistory.length > 0 && (
-        <StackItem>
-          <Card>
-            <CardHeader>
-              <CardTitle>Anomaly History</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <AnomalySparkline history={fleet.anomalyHistory} />
-            </CardBody>
-          </Card>
-        </StackItem>
-      )}
     </Stack>
   );
 }
