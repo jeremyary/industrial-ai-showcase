@@ -140,21 +140,27 @@ function ActivityLog({ entries }: { entries: StatusLogEntry[] }) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [entries.length]);
 
-  if (entries.length === 0) return null;
-
   return (
     <div className="showcase-activity-log">
       <div className="showcase-activity-log-title">Activity</div>
       <div className="showcase-activity-log-entries">
-        {entries.map((e, i) => {
-          const time = new Date(e.ts).toLocaleTimeString();
-          return (
-            <div key={i} className="showcase-activity-log-entry">
-              <span className="showcase-activity-log-time">{time}</span>
-              <span>{e.message}</span>
-            </div>
-          );
-        })}
+        {entries.length === 0 ? (
+          <div className="showcase-activity-log-entry">
+            <span style={{ color: "#8A8D90", fontStyle: "italic" }}>
+              Argo CD sync activity will appear here
+            </span>
+          </div>
+        ) : (
+          entries.map((e, i) => {
+            const time = new Date(e.ts).toLocaleTimeString();
+            return (
+              <div key={i} className="showcase-activity-log-entry">
+                <span className="showcase-activity-log-time">{time}</span>
+                <span>{e.message}</span>
+              </div>
+            );
+          })
+        )}
         <div ref={endRef} />
       </div>
     </div>
@@ -548,9 +554,7 @@ export function FleetView({ events }: { events: FleetMessage[] }) {
                 </ProgressStep>
               ))}
             </ProgressStepper>
-            {(fleet?.statusLog?.length ?? 0) > 0 && (
-              <ActivityLog entries={fleet!.statusLog} />
-            )}
+            <ActivityLog entries={fleet?.statusLog ?? []} />
           </CardBody>
         </Card>
       </StackItem>
