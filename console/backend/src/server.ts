@@ -25,6 +25,7 @@ const stream = new FleetStream(
   log,
 );
 stream.demoState.argoSync = argoSync;
+stream.demoState.wmsStubBaseUrl = config.wmsStubBaseUrl;
 stream.demoState.log = log;
 
 fastify.get("/healthz", async () => ({ status: "ok" }));

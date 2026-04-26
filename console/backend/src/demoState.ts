@@ -51,11 +51,27 @@ export class DemoState {
   };
   anomalyHistory: AnomalyPoint[] = [];
   statusLog: StatusLogEntry[] = [];
-
   private timers: ReturnType<typeof setTimeout>[] = [];
   private promotedVersion: string = BASELINE_VERSION;
   argoSync: ArgoSync | null = null;
+  wmsStubBaseUrl: string = "";
   log: SimpleLogger | null = null;
+
+  private async publishAnomalyScore(
+    robotId: string,
+    score: number,
+  ): Promise<void> {
+    if (!this.wmsStubBaseUrl) return;
+    try {
+      await fetch(`${this.wmsStubBaseUrl}/trigger-anomaly`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ robot_id: robotId, anomaly_score: score }),
+      });
+    } catch {
+      this.log?.warn({}, "demoState: failed to publish anomaly score");
+    }
+  }
 
   private addLog(message: string): void {
     this.statusLog.push({ ts: Date.now(), message });
@@ -154,11 +170,12 @@ export class DemoState {
       this.addLog(`Rolling back ${factory} to ${BASELINE_VERSION}`);
 
       if (this.argoSync?.enabled) {
-        void this.realArgoRollback(factory);
+        void this.realArgoRollback(factory, robotId);
       } else {
         this.scheduleSettle(factory, "synced", () => {
           f.policyVersion = BASELINE_VERSION;
           this.phase = "rolled-back";
+          void this.publishAnomalyScore(robotId, 0.08);
           this.addLog("Simulated rollback complete");
         });
       }
@@ -210,7 +227,10 @@ export class DemoState {
     });
   }
 
-  private async realArgoRollback(factory: string): Promise<void> {
+  private async realArgoRollback(
+    factory: string,
+    robotId: string,
+  ): Promise<void> {
     const f = this.factories[factory];
 
     this.addLog("Committing rollback to Git…");
@@ -223,6 +243,7 @@ export class DemoState {
           f.argoSyncStatus = "synced";
         }
         this.phase = "rolled-back";
+        void this.publishAnomalyScore(robotId, 0.08);
       });
       return;
     }
@@ -232,6 +253,7 @@ export class DemoState {
         f.argoSyncStatus = "synced";
       }
       this.phase = "rolled-back";
+      void this.publishAnomalyScore(robotId, 0.08);
       this.addLog("Policy already at baseline in Git — rollback complete");
       return;
     }
@@ -249,6 +271,7 @@ export class DemoState {
     this.pollArgoUntilSynced(factory, () => {
       if (f) f.argoSyncStatus = "synced";
       this.phase = "rolled-back";
+      void this.publishAnomalyScore(robotId, 0.08);
       this.addLog("Rollback sync complete");
       this.log?.info({ factory }, "argoSync: rollback complete");
     });
