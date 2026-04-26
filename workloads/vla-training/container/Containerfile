@@ -4,7 +4,7 @@ FROM docker.io/nvidia/cuda:12.8.0-devel-ubuntu22.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git python3.10 python3.10-dev python3-pip \
-    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev && \
+    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libavdevice-dev && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s /usr/bin/python3 /usr/local/bin/python
 
@@ -18,7 +18,8 @@ RUN pip install --no-cache-dir torch==2.7.1 torchvision==0.22.1
 RUN pip install --no-cache-dir packaging ninja setuptools wheel psutil
 RUN pip install --no-cache-dir flash-attn==2.7.4.post1 --no-build-isolation
 RUN pip install --no-cache-dir -e .
-RUN pip install --no-cache-dir torchcodec==0.11.1
+RUN pip install --no-cache-dir torchcodec==0.4.0
+RUN pip install --no-cache-dir onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
 
 COPY workloads/vla-training/pyproject.toml /workspace/vla_training/
 COPY workloads/vla-training/src /workspace/vla_training/src

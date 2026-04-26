@@ -168,13 +168,21 @@ def run(
     ]
 
     print(f"Command: {' '.join(train_cmd)}\n")
-    result = subprocess.run(
-        train_cmd, env=env, cwd=str(GROOT_ROOT), stdin=subprocess.DEVNULL,
-        check=True, capture_output=True, text=True,
-    )
-    train_stdout = result.stdout
-    print(train_stdout)
+    train_log = Path("/tmp/train_stdout.log")
+    with open(train_log, "w") as log_f:
+        proc = subprocess.Popen(
+            train_cmd, env=env, cwd=str(GROOT_ROOT), stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            log_f.write(line)
+        proc.wait()
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, train_cmd)
 
+    train_stdout = train_log.read_text()
     if cfg.mlflow.enabled:
         _log_training_to_mlflow(cfg, train_stdout, max_steps, global_batch_size, num_gpus)
 
@@ -187,6 +195,8 @@ def run(
         "--export-mode", "full_pipeline",
         "--precision", "bf16",
         "--steps", "export",
+        "--embodiment-tag", "NEW_EMBODIMENT",
+        "--dataset-path", str(dataset_path),
     ]
 
     print(f"Command: {' '.join(export_cmd)}\n")
