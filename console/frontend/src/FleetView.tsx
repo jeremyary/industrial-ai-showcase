@@ -57,7 +57,7 @@ const DEMO_STEPS: DemoStep[] = [
     doneText:
       "Factory A is now running v1.4. Argo CD sync completed successfully.",
     lookFor:
-      "Watch the Argo Sync Status panel below — you'll see the Deployment resource go from Synced → OutOfSync → Synced as the new policy version rolls out.",
+      "Watch the Activity feed & Status panel below - Deployment resource will cycle through Synced → OutOfSync → Synced as the new policy version rolls out.",
   },
   {
     id: "anomaly",
@@ -73,7 +73,7 @@ const DEMO_STEPS: DemoStep[] = [
   },
   {
     id: "reset",
-    label: "Reset Demo",
+    label: "Rollback Complete",
     action: "reset-fleet-demo",
     preText: "Return all systems to baseline for the next run.",
     activeText: "Resetting…",
