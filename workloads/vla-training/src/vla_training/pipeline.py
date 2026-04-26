@@ -25,6 +25,7 @@ def _configure_gpu_step(task: dsl.PipelineTask) -> None:
     task.set_env_variable("MLFLOW_TRACKING_INSECURE_TLS", "true")
     task.set_env_variable("TRITON_CACHE_DIR", "/tmp/.triton")
     task.set_env_variable("HOME", "/tmp")
+    kubernetes.empty_dir_mount(task, volume_name="dshm", mount_path="/dev/shm", medium="Memory", size_limit="16Gi")
     kubernetes.add_toleration(task, key="nvidia.com/gpu", operator="Exists", effect="NoSchedule")
     kubernetes.use_secret_as_env(
         task,
