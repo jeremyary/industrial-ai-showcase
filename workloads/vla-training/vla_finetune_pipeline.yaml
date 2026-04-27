@@ -228,7 +228,7 @@ deploymentSpec:
         - name: S3_BUCKET
           value: vla-training
         - name: MODEL_REGISTRY_ADDRESS
-          value: http://model-registry.redhat-ods-applications.svc:8080
+          value: http://wbc-model-registry.rhoai-model-registries.svc:8080
         image: image-registry.openshift-image-registry.svc:5000/vla-training/vla-training:latest
         resources:
           cpuRequest: 1.0

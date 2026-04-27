@@ -3,7 +3,7 @@
 
 S3_ENDPOINT = "http://minio.mlflow.svc:9000"
 MLFLOW_TRACKING_URI = "https://mlflow.redhat-ods-applications.svc:8443"
-MODEL_REGISTRY_ADDRESS = "http://model-registry.redhat-ods-applications.svc:8080"
+MODEL_REGISTRY_ADDRESS = "http://wbc-model-registry.rhoai-model-registries.svc:8080"
 
 PIPELINE_IMAGE = "image-registry.openshift-image-registry.svc:5000/vla-training/vla-training:latest"
 GPU_LIMIT = 1
