@@ -171,7 +171,7 @@ deploymentSpec:
         - name: S3_BUCKET
           value: vla-training
         - name: MLFLOW_TRACKING_URI
-          value: http://mlflow.mlflow.svc:5000
+          value: https://mlflow.redhat-ods-applications.svc:8443
         - name: MLFLOW_TRACKING_INSECURE_TLS
           value: 'true'
         - name: TRITON_CACHE_DIR
@@ -390,7 +390,7 @@ root:
         isOptional: true
         parameterType: STRING
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.16.0
+sdkVersion: kfp-2.13.0
 ---
 platforms:
   kubernetes:
@@ -404,7 +404,6 @@ platforms:
               secretKey: MINIO_ROOT_USER
             - envVar: AWS_SECRET_ACCESS_KEY
               secretKey: MINIO_ROOT_PASSWORD
-            optional: false
             secretName: minio-credentials
             secretNameParameter:
               runtimeValue:
@@ -412,7 +411,6 @@ platforms:
           - keyToEnv:
             - envVar: HF_TOKEN
               secretKey: HF_TOKEN
-            optional: false
             secretName: hf-credentials
             secretNameParameter:
               runtimeValue:
@@ -423,6 +421,11 @@ platforms:
             operator: Exists
         exec-vla-fine-tune-and-export-op:
           activeDeadlineSeconds: '7200'
+          emptyDirMounts:
+          - medium: Memory
+            mountPath: /dev/shm
+            sizeLimit: 16Gi
+            volumeName: dshm
           imagePullPolicy: Always
           secretAsEnv:
           - keyToEnv:
@@ -430,7 +433,6 @@ platforms:
               secretKey: MINIO_ROOT_USER
             - envVar: AWS_SECRET_ACCESS_KEY
               secretKey: MINIO_ROOT_PASSWORD
-            optional: false
             secretName: minio-credentials
             secretNameParameter:
               runtimeValue:
@@ -438,7 +440,6 @@ platforms:
           - keyToEnv:
             - envVar: HF_TOKEN
               secretKey: HF_TOKEN
-            optional: false
             secretName: hf-credentials
             secretNameParameter:
               runtimeValue:
@@ -456,7 +457,6 @@ platforms:
               secretKey: MINIO_ROOT_USER
             - envVar: AWS_SECRET_ACCESS_KEY
               secretKey: MINIO_ROOT_PASSWORD
-            optional: false
             secretName: minio-credentials
             secretNameParameter:
               runtimeValue:
@@ -474,7 +474,6 @@ platforms:
               secretKey: MINIO_ROOT_USER
             - envVar: AWS_SECRET_ACCESS_KEY
               secretKey: MINIO_ROOT_PASSWORD
-            optional: false
             secretName: minio-credentials
             secretNameParameter:
               runtimeValue:
