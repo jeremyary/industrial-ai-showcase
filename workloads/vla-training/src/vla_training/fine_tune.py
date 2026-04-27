@@ -184,7 +184,10 @@ def run(
 
     train_stdout = train_log.read_text()
     if cfg.mlflow.enabled:
-        _log_training_to_mlflow(cfg, train_stdout, max_steps, global_batch_size, num_gpus)
+        try:
+            _log_training_to_mlflow(cfg, train_stdout, max_steps, global_batch_size, num_gpus)
+        except Exception as exc:
+            print(f"WARNING: MLflow logging failed (non-fatal): {exc}", file=sys.stderr)
 
     print("\n=== ONNX Export ===")
     ONNX_DIR.mkdir(parents=True, exist_ok=True)
