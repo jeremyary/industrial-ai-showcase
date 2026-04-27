@@ -22,7 +22,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@patternfly/react-core";
-import type { AudienceMode, ButtonDef, FleetMessage, ScenarioDetail, Topology, ViewName } from "./types.js";
+import type { ButtonDef, FleetMessage, ScenarioDetail, Topology, ViewName } from "./types.js";
 import { executeAction, fetchScenarioDetail, fetchScenarios, fetchTopology, subscribeEvents } from "./api.js";
 import { StageCard } from "./Stage.js";
 import { ArchitectureView } from "./ArchitectureView.js";
@@ -30,23 +30,18 @@ import { FleetView } from "./FleetView.js";
 import { LineageView } from "./LineageView.js";
 import topologyImg from "./topology.png";
 
-const VIEWS_BY_AUDIENCE: Record<AudienceMode, ViewName[]> = {
-  novice: ["stage"],
-  evaluator: ["stage", "fleet", "lineage", "architecture"],
-  expert: ["stage", "fleet", "lineage", "architecture"],
-};
+const VIEWS: ViewName[] = ["stage", "lineage", "fleet", "architecture"];
 
 const VIEW_LABELS: Record<ViewName, string> = {
   stage: "Stage",
   architecture: "Architecture",
   fleet: "Fleet",
-  lineage: "Lineage",
+  lineage: "Training",
 };
 
 const MAX_EVENTS = 200;
 
 export function App(){
-  const [audience, setAudience] = useState<AudienceMode>("novice");
   const [currentView, setCurrentView] = useState<ViewName>("stage");
   const [topology, setTopology] = useState<Topology | null>(null);
   const [scenario, setScenario] = useState<ScenarioDetail | null>(null);
@@ -124,35 +119,15 @@ export function App(){
           </MastheadMain>
           <MastheadContent>
             <Flex spaceItems={{ default: "spaceItemsLg" }} alignItems={{ default: "alignItemsCenter" }}>
-              {VIEWS_BY_AUDIENCE[audience].length > 1 && (
-                <FlexItem>
-                  <ToggleGroup aria-label="view selector">
-                    {VIEWS_BY_AUDIENCE[audience].map((v) => (
-                      <ToggleGroupItem
-                        key={v}
-                        text={VIEW_LABELS[v]}
-                        buttonId={`view-${v}`}
-                        isSelected={currentView === v}
-                        onChange={() => setCurrentView(v)}
-                      />
-                    ))}
-                  </ToggleGroup>
-                </FlexItem>
-              )}
               <FlexItem>
-                <ToggleGroup aria-label="audience mode">
-                  {(["novice", "evaluator", "expert"] as const).map((m) => (
+                <ToggleGroup aria-label="view selector">
+                  {VIEWS.map((v) => (
                     <ToggleGroupItem
-                      key={m}
-                      text={m}
-                      buttonId={m}
-                      isSelected={audience === m}
-                      onChange={() => {
-                        setAudience(m);
-                        if (!VIEWS_BY_AUDIENCE[m].includes(currentView)) {
-                          setCurrentView("stage");
-                        }
-                      }}
+                      key={v}
+                      text={VIEW_LABELS[v]}
+                      buttonId={`view-${v}`}
+                      isSelected={currentView === v}
+                      onChange={() => setCurrentView(v)}
                     />
                   ))}
                 </ToggleGroup>

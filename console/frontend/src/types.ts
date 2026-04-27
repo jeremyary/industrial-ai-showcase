@@ -97,7 +97,24 @@ export interface LineageEdge {
   target: string;
 }
 
+export interface LineageLinks {
+  mlflowExperiment: string;
+  modelRegistry: string;
+  pipelineRuns: string;
+  rhoaiDashboard: string;
+}
+
 export interface LineageGraph {
   nodes: LineageNode[];
   edges: LineageEdge[];
+  links: LineageLinks | null;
+}
+
+export interface PipelineRun {
+  id: string;
+  name: string;
+  state: string;
+  createdAt: string;
+  finishedAt: string | null;
+  error: string | null;
 }
