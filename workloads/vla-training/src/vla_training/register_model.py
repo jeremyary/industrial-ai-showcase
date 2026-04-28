@@ -50,18 +50,29 @@ def register_model(
     if onnx_files:
         combined_metadata["onnx_files"] = ",".join(onnx_files)
 
-    registered_model = registry.register_model(
-        name=name,
-        uri=uri,
-        version=version,
-        model_format_name=model_format_name,
-        model_format_version=model_format_version,
-        version_description=description,
-        metadata=combined_metadata,
-    )
-
-    print(f"  Registered: {registered_model.name} (id={registered_model.id})")
-    return registered_model.id
+    try:
+        registered_model = registry.register_model(
+            name=name,
+            uri=uri,
+            version=version,
+            model_format_name=model_format_name,
+            model_format_version=model_format_version,
+            version_description=description,
+            metadata=combined_metadata,
+        )
+        print(f"  Registered: {registered_model.name} (id={registered_model.id})")
+        return registered_model.id
+    except Exception as exc:
+        if "already exists" not in str(exc):
+            raise
+        print(f"  Version {version} already exists, updating...")
+        mv = registry.get_model_version(name, version)
+        if description:
+            mv.description = description
+        mv.custom_properties = {**(mv.custom_properties or {}), **combined_metadata}
+        registry.update(mv)
+        print(f"  Updated: {name} v{version} (id={mv.id})")
+        return mv.id
 
 
 def _lineage_metadata() -> dict:
