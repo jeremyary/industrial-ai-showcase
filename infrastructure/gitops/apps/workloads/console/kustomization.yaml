@@ -10,4 +10,3 @@ resources:
   - route.yaml
   - networkpolicies.yaml
   - argo-rbac.yaml
-  - governance-rbac.yaml

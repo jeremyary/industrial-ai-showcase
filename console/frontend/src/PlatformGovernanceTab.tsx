@@ -118,7 +118,7 @@ function PolicyFederationCard({ data }: { data: GovernanceStatus }) {
                 <td style={{ padding: "6px 8px", color: "#6A6E73" }}>{p.nistFamily}</td>
                 <td style={{ padding: "6px 8px" }}>
                   <Label
-                    color={p.remediationAction === "enforce" ? "blue" : "gold"}
+                    color={p.remediationAction === "enforce" ? "blue" : "yellow"}
                     isCompact
                   >
                     {p.remediationAction}
