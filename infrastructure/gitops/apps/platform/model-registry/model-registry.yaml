@@ -1,22 +1,22 @@
-apiVersion: modelregistry.opendatahub.io/v1alpha1
+apiVersion: modelregistry.opendatahub.io/v1beta1
 kind: ModelRegistry
 metadata:
-  name: model-registry
-  namespace: redhat-ods-applications
+  name: wbc-model-registry
+  namespace: rhoai-model-registries
   annotations:
     argocd.argoproj.io/sync-wave: "3"
 spec:
-  grpc:
-    port: 9090
   rest:
     port: 8080
-    serviceRoute: enabled
+  grpc:
+    port: 9090
   postgres:
-    host: mlflow-db-rw.mlflow.svc.cluster.local
+    host: wbc-model-registry-postgres
     port: 5432
-    database: model_registry
+    database: wbc_model_registry
+    username: mlmduser
+    skipDBCreation: false
     sslMode: disable
-    username: mlflow
     passwordSecret:
-      name: mlflow-db-app
-      key: password
+      name: wbc-model-registry-db
+      key: POSTGRES_PASSWORD

@@ -179,7 +179,7 @@ export class DemoState {
           this.addLog("Simulated rollback complete");
         });
       }
-    }, 2000);
+    }, 3000);
   }
 
   private async realArgoPromote(

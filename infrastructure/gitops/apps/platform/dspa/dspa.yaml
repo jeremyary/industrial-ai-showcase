@@ -32,5 +32,5 @@ spec:
       scheme: http
       s3CredentialsSecret:
         secretName: minio-credentials
-        accessKey: AWS_ACCESS_KEY_ID
-        secretKey: AWS_SECRET_ACCESS_KEY
+        accessKey: MINIO_ROOT_USER
+        secretKey: MINIO_ROOT_PASSWORD
