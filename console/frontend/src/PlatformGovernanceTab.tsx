@@ -148,7 +148,6 @@ function PolicyFederationCard({ data }: { data: GovernanceStatus }) {
 function SecurityControlsCard({ data }: { data: GovernanceStatus }) {
   return (
     <Card>
-      <CardHeader><CardTitle>Security Controls</CardTitle></CardHeader>
       <CardBody>
         <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
           <thead>

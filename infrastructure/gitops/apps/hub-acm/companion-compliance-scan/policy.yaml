@@ -1,7 +1,7 @@
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
-  name: companion-compliance-scanning
+  name: companion-compliance-scan
   namespace: open-cluster-management-global-set
   annotations:
     policy.open-cluster-management.io/categories: AU Audit and Accountability

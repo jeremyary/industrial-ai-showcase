@@ -89,13 +89,12 @@ async function fetchManagedClusters(): Promise<GovernanceData["managedClusters"]
         const conds = mc.status?.conditions ?? [];
         const avail = conds.find((c) => c.type === "ManagedClusterConditionAvailable");
         const joined = conds.find((c) => c.type === "ManagedClusterJoined" || c.type === "HubAcceptedManagedCluster");
-        const heartbeat = conds.find((c) => c.type === "ManagedClusterConditionAvailable");
         return {
           name: mc.metadata.name,
           role: mc.metadata.labels?.["role"] ?? "spoke",
           available: avail?.status === "True",
           joined: joined?.status === "True",
-          lastHeartbeat: heartbeat?.lastTransitionTime ?? new Date().toISOString(),
+          lastHeartbeat: avail?.status === "True" ? new Date().toISOString() : (avail?.lastTransitionTime ?? new Date().toISOString()),
         };
       });
   } catch {
@@ -108,7 +107,7 @@ async function fetchPolicies(): Promise<GovernanceData["policies"]> {
     "companion-git-source-secret": { display: "Git Source Secret", nist: "CM — Configuration Mgmt" },
     "companion-network-baseline": { display: "Network Baseline", nist: "SC — System & Comms Protection" },
     "companion-rbac-enforcement": { display: "RBAC Enforcement", nist: "AC — Access Control" },
-    "companion-compliance-scanning": { display: "Compliance Scanning", nist: "AU — Audit & Accountability" },
+    "companion-compliance-scan": { display: "Compliance Scanning", nist: "AU — Audit & Accountability" },
   };
   try {
     const data = await k8sGet(
@@ -120,7 +119,9 @@ async function fetchPolicies(): Promise<GovernanceData["policies"]> {
         status?: { status?: Array<{ clusternamespace: string; clustername: string; compliant?: string }> };
       }>;
     };
-    return (data.items ?? []).map((p) => {
+    return (data.items ?? [])
+      .filter((p) => p.metadata.name.startsWith("companion-"))
+      .map((p) => {
       const info = DISPLAY_NAMES[p.metadata.name] ?? { display: p.metadata.name, nist: "—" };
       return {
         name: p.metadata.name,
@@ -219,7 +220,7 @@ async function buildGovernanceData(): Promise<GovernanceData> {
     securityControls,
     supplyChain: {
       baseImages: ["ubi9/python-312", "ubi9/nodejs-22"],
-      signingMethod: "Sigstore (Fulcio + Rekor)",
+      signingMethod: "Sigstore keyless signing",
       verificationPolicy: "ClusterImagePolicy on companion (Red Hat release key)",
     },
     stigCompliance: [

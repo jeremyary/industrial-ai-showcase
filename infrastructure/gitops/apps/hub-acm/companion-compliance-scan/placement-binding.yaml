@@ -1,7 +1,7 @@
 apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding
 metadata:
-  name: companion-compliance-scanning
+  name: companion-compliance-scan
   namespace: open-cluster-management-global-set
 placementRef:
   apiGroup: cluster.open-cluster-management.io
@@ -10,4 +10,4 @@ placementRef:
 subjects:
   - apiGroup: policy.open-cluster-management.io
     kind: Policy
-    name: companion-compliance-scanning
+    name: companion-compliance-scan
