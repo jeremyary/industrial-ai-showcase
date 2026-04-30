@@ -644,6 +644,7 @@ asyncio.ensure_future(_run())
 import sys as _sys  # noqa: E402
 _sys.path.insert(0, "/scenarios")
 import viewport_mjpeg  # noqa: E402,F401
+import cosmos_capture  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------------
