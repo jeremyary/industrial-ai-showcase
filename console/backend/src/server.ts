@@ -6,6 +6,7 @@ import { loadConfig } from "./config.js";
 import { FleetStream, type FleetMessage } from "./kafkaStream.js";
 import { registerStreamRoutes } from "./stream.js";
 import { ArgoSync } from "./argoSync.js";
+import { getGovernanceStatus } from "./governance.js";
 
 const config = loadConfig();
 const fastify = Fastify({
@@ -81,6 +82,10 @@ fastify.post<{ Params: { action: string }; Body: Record<string, unknown> }>(
 
 fastify.get("/api/argo-status", async () => {
   return argoSync.getArgoAppStatus();
+});
+
+fastify.get("/api/governance", async () => {
+  return getGovernanceStatus();
 });
 
 fastify.get("/api/fleet", async () => {

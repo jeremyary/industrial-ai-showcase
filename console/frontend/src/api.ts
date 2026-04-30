@@ -1,5 +1,5 @@
 // This project was developed with assistance from AI tools.
-import type { ArgoAppStatus, FleetMessage, FleetStatus, LineageGraph, PipelineRun, ScenarioDetail, Topology } from "./types.js";
+import type { ArgoAppStatus, FleetMessage, FleetStatus, GovernanceStatus, LineageGraph, PipelineRun, ScenarioDetail, Topology } from "./types.js";
 
 export async function fetchTopology(): Promise<Topology> {
   const resp = await fetch("/api/topology");
@@ -58,6 +58,12 @@ export async function fetchArgoStatus(): Promise<ArgoAppStatus> {
   const resp = await fetch("/api/argo-status");
   if (!resp.ok) throw new Error(`argo status fetch failed: ${resp.status}`);
   return (await resp.json()) as ArgoAppStatus;
+}
+
+export async function fetchGovernance(): Promise<GovernanceStatus> {
+  const resp = await fetch("/api/governance");
+  if (!resp.ok) throw new Error(`governance fetch failed: ${resp.status}`);
+  return (await resp.json()) as GovernanceStatus;
 }
 
 export function subscribeEvents(onMessage: (m: FleetMessage) => void): () => void {

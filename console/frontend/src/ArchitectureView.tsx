@@ -15,9 +15,10 @@ import {
 } from "@patternfly/react-core";
 import type { Topology } from "./types.js";
 import { fetchTopology } from "./api.js";
+import { PlatformGovernanceTab } from "./PlatformGovernanceTab.js";
 import archDiagram from "./phases-1-2-arch.png";
 
-type ArchView = "purdue" | "diagram";
+type ArchView = "purdue" | "diagram" | "governance";
 
 const PURDUE_LEVELS = [
   {
@@ -91,10 +92,19 @@ export function ArchitectureView() {
             isSelected={view === "diagram"}
             onChange={() => setView("diagram")}
           />
+          <ToggleGroupItem
+            text="Platform Governance"
+            isSelected={view === "governance"}
+            onChange={() => setView("governance")}
+          />
         </ToggleGroup>
       </StackItem>
 
-      {view === "diagram" ? (
+      {view === "governance" ? (
+        <StackItem>
+          <PlatformGovernanceTab />
+        </StackItem>
+      ) : view === "diagram" ? (
         <StackItem>
           <Card>
             <CardHeader>

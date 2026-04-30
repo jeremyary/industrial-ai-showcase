@@ -1,0 +1,13 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: companion-network-baseline
+  namespace: open-cluster-management-global-set
+placementRef:
+  apiGroup: cluster.open-cluster-management.io
+  kind: Placement
+  name: companion-only
+subjects:
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: companion-network-baseline

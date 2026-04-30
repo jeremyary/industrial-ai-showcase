@@ -118,3 +118,56 @@ export interface PipelineRun {
   finishedAt: string | null;
   error: string | null;
 }
+
+export interface ManagedClusterStatus {
+  name: string;
+  role: string;
+  available: boolean;
+  joined: boolean;
+  lastHeartbeat: string;
+}
+
+export interface PolicyComplianceStatus {
+  name: string;
+  displayName: string;
+  nistFamily: string;
+  remediationAction: "enforce" | "inform";
+  clusterCompliance: {
+    cluster: string;
+    compliant: boolean | null;
+  }[];
+}
+
+export interface SecurityControl {
+  name: string;
+  scope: string;
+  status: "active" | "degraded" | "static";
+  detail: string;
+}
+
+export interface StigProfile {
+  profile: string;
+  cluster: string;
+  schedule: string;
+  lastScan: string | null;
+  pass: number | null;
+  fail: number | null;
+  remediation: number | null;
+}
+
+export interface GovernanceStatus {
+  managedClusters: ManagedClusterStatus[];
+  policies: PolicyComplianceStatus[];
+  securityControls: SecurityControl[];
+  supplyChain: {
+    baseImages: string[];
+    signingMethod: string;
+    verificationPolicy: string;
+  };
+  stigCompliance: StigProfile[];
+  observability: {
+    enabled: boolean;
+    retentionRaw: string;
+    collectorHealthy: boolean | null;
+  };
+}

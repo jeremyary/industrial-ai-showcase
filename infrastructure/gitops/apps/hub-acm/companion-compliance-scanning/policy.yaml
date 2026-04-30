@@ -1,0 +1,39 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: companion-compliance-scanning
+  namespace: open-cluster-management-global-set
+  annotations:
+    policy.open-cluster-management.io/categories: AU Audit and Accountability
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+spec:
+  remediationAction: enforce
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: compliance-scanning-warehouse-edge
+        spec:
+          remediationAction: enforce
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: compliance.openshift.io/v1alpha1
+                kind: ScanSettingBinding
+                metadata:
+                  name: stig-scan
+                  namespace: openshift-compliance
+                profiles:
+                  - apiGroup: compliance.openshift.io/v1alpha1
+                    kind: Profile
+                    name: ocp4-stig-v2r3
+                  - apiGroup: compliance.openshift.io/v1alpha1
+                    kind: Profile
+                    name: ocp4-stig-node-v2r3
+                settingsRef:
+                  apiGroup: compliance.openshift.io/v1alpha1
+                  kind: ScanSetting
+                  name: default

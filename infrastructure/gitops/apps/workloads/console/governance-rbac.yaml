@@ -1,0 +1,76 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: console-governance-reader
+rules:
+  - apiGroups: ["cluster.open-cluster-management.io"]
+    resources: ["managedclusters"]
+    verbs: ["get", "list"]
+  - apiGroups: ["observability.open-cluster-management.io"]
+    resources: ["multiclusterobservabilities"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: console-governance-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: console-governance-reader
+subjects:
+  - kind: ServiceAccount
+    name: showcase-console-backend
+    namespace: fleet-ops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: console-policy-reader
+  namespace: open-cluster-management-global-set
+rules:
+  - apiGroups: ["policy.open-cluster-management.io"]
+    resources: ["policies"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: console-policy-reader
+  namespace: open-cluster-management-global-set
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: console-policy-reader
+subjects:
+  - kind: ServiceAccount
+    name: showcase-console-backend
+    namespace: fleet-ops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: console-vault-reader
+  namespace: vault
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: console-vault-reader
+  namespace: vault
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: console-vault-reader
+subjects:
+  - kind: ServiceAccount
+    name: showcase-console-backend
+    namespace: fleet-ops
