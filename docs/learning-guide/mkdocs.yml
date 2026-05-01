@@ -1,0 +1,74 @@
+site_name: Physical & Industrial AI Learning Guide
+site_description: A comprehensive guide for engineers new to physical AI, industrial AI, and the NVIDIA + Red Hat ecosystem
+docs_dir: docs
+site_dir: _site
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: black
+      accent: red
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: black
+      accent: red
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.integrate
+    - search.suggest
+    - content.tabs.link
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - "Part 1: Foundations":
+    - "What Is Physical AI": foundations/01-what-is-physical-ai.md
+    - "Industrial AI & the Factory Floor": foundations/02-industrial-ai.md
+    - "Digital Twins": foundations/03-digital-twins.md
+    - "Simulation for Robotics": foundations/04-simulation-for-robotics.md
+    - "Embodied AI": foundations/05-embodied-ai.md
+    - "Synthetic Data & Domain Adaptation": foundations/06-synthetic-data.md
+  - "Part 2: Technical Concepts":
+    - "OpenUSD — Universal Scene Description": technical-concepts/01-openusd.md
+    - "Vision-Language Models": technical-concepts/02-vision-language-models.md
+    - "Vision-Language-Action Models": technical-concepts/03-vision-language-action-models.md
+    - "World Models & Foundation Models for Robotics": technical-concepts/04-world-models.md
+    - "MLOps for Physical AI": technical-concepts/05-mlops-for-physical-ai.md
+    - "Edge Computing for Robotics": technical-concepts/06-edge-computing.md
+    - "Fleet Management & Orchestration": technical-concepts/07-fleet-management.md
+  - "Part 3: NVIDIA Ecosystem":
+    - "NVIDIA Omniverse Platform": nvidia-ecosystem/01-omniverse.md
+    - "Isaac Sim & Isaac Lab": nvidia-ecosystem/02-isaac.md
+    - "Cosmos — World Foundation Models": nvidia-ecosystem/03-cosmos.md
+    - "GR00T & Embodied AI Models": nvidia-ecosystem/04-groot.md
+    - "NIMs — Inference Microservices": nvidia-ecosystem/05-nims.md
+    - "Nucleus & Asset Management": nvidia-ecosystem/06-nucleus.md
+    - "GPU Architecture for AI Workloads": nvidia-ecosystem/07-gpu-architecture.md
+  - "Part 4: Red Hat Platform":
+    - "OpenShift as the AI Platform": redhat-platform/01-openshift-for-ai.md
+    - "OpenShift AI (RHOAI)": redhat-platform/02-openshift-ai.md
+    - "GitOps for AI Workloads": redhat-platform/03-gitops-for-ai.md
+    - "Edge & Multi-Cluster Management": redhat-platform/04-edge-and-acm.md
+    - "Security & Compliance for AI": redhat-platform/05-security-and-compliance.md
+  - "Part 5: Bringing It Together":
+    - "The Physical AI Stack": synthesis/01-the-physical-ai-stack.md
+    - "From Simulation to Production": synthesis/02-sim-to-production.md
+    - "Further Reading & Resources": synthesis/03-further-reading.md
