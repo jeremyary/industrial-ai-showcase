@@ -3,6 +3,11 @@ site_description: A comprehensive guide for engineers new to physical AI, indust
 docs_dir: docs
 site_dir: _site
 
+copyright: >-
+  This learning guide was developed with assistance from AI tools.
+  Content has undergone light review but readers should verify claims
+  and references independently before relying on them.
+
 theme:
   name: material
   palette:
